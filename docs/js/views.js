@@ -494,20 +494,113 @@ function renderDetailView(app, id) {
     .then((item) => {
       app.innerHTML = '';
       const section = document.createElement('section');
-      section.className = 'panel';
+      section.className = 'panel detail-view';
 
       const title = document.createElement('h2');
       title.textContent = item.title || 'Sin título';
-      const artist = document.createElement('p');
-      artist.textContent = item.artistDisplayName || 'Artista desconocido';
-      const desc = document.createElement('p');
-      desc.textContent = item.objectDate || 'Fecha no disponible';
+
+      const actions = document.createElement('div');
+      actions.className = 'detail-actions';
+
       const back = document.createElement('button');
       back.className = 'secondary-btn';
       back.textContent = '← Volver';
       back.addEventListener('click', () => window.history.back());
+      actions.appendChild(back);
 
-      section.append(title, artist, desc, back);
+      if (item.artistDisplayName) {
+        const artistButton = document.createElement('button');
+        artistButton.className = 'secondary-btn';
+        artistButton.textContent = 'Ver más obras del artista';
+        artistButton.addEventListener('click', () => navigateTo(`#artist/${encodeURIComponent(item.artistDisplayName)}`));
+        actions.appendChild(artistButton);
+      }
+
+      const compareButton = document.createElement('button');
+      compareButton.className = 'secondary-btn';
+      compareButton.textContent = 'Comparar';
+      compareButton.addEventListener('click', () => navigateTo('#compare'));
+      actions.appendChild(compareButton);
+
+      const layout = document.createElement('div');
+      layout.className = 'detail-layout';
+
+      const imageColumn = document.createElement('div');
+      imageColumn.className = 'detail-image-column';
+
+      const image = document.createElement('img');
+      image.className = 'detail-image';
+      image.src = item.primaryImage || item.primaryImageSmall || 'https://via.placeholder.com/400x300?text=Sin+imagen';
+      image.alt = item.title || 'Obra';
+      imageColumn.appendChild(image);
+
+      if (Array.isArray(item.additionalImages) && item.additionalImages.length) {
+        const thumbs = document.createElement('div');
+        thumbs.className = 'thumb-gallery';
+
+        item.additionalImages.slice(0, 4).forEach((src) => {
+          const thumb = document.createElement('img');
+          thumb.className = 'thumb-image';
+          thumb.src = src;
+          thumb.alt = 'Imagen adicional';
+          thumbs.appendChild(thumb);
+        });
+
+        imageColumn.appendChild(thumbs);
+      }
+
+      const infoColumn = document.createElement('div');
+      infoColumn.className = 'detail-info';
+
+      const artist = document.createElement('p');
+      artist.className = 'detail-subtitle';
+      artist.textContent = item.artistDisplayName || 'Artista desconocido';
+
+      const description = document.createElement('p');
+      description.textContent = item.artistDisplayBio || item.objectDate || 'Sin descripción';
+
+      const metaList = document.createElement('dl');
+      metaList.className = 'detail-meta';
+
+      const fields = [
+        ['Fecha', item.objectDate || '—'],
+        ['Departamento', item.department || '—'],
+        ['Técnica', item.medium || '—'],
+        ['Dimensiones', item.dimensions || '—'],
+        ['Cultura', item.culture || '—'],
+        ['Periodo', item.period || '—'],
+        ['Clasificación', item.classification || '—'],
+        ['Adquisición', item.creditLine || '—'],
+      ];
+
+      fields.forEach(([label, value]) => {
+        const term = document.createElement('dt');
+        term.textContent = label;
+        const definition = document.createElement('dd');
+        definition.textContent = value;
+        metaList.append(term, definition);
+      });
+
+      const tags = document.createElement('div');
+      tags.className = 'tag-list';
+
+      if (Array.isArray(item.tags) && item.tags.length) {
+        item.tags.slice(0, 12).forEach((tag) => {
+          const chip = document.createElement('span');
+          chip.className = 'tag-chip';
+          chip.textContent = tag.term || 'Etiqueta';
+          tags.appendChild(chip);
+        });
+      } else {
+        const chip = document.createElement('span');
+        chip.className = 'tag-chip';
+        chip.textContent = 'Sin etiquetas';
+        tags.appendChild(chip);
+      }
+
+      infoColumn.append(title, artist, description, metaList, tags);
+      layout.append(imageColumn, infoColumn);
+      section.append(actions, layout);
       app.appendChild(section);
     })
     .catch(() => {
