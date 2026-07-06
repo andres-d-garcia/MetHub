@@ -638,14 +638,65 @@ function renderDepartmentsView(app) {
 
 function renderArtistView(app, name) {
   app.innerHTML = '';
-  const section = document.createElement('section');
-  section.className = 'panel';
-  const h2 = document.createElement('h2');
-  h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
-  const p = document.createElement('p');
-  p.textContent = 'Aquí se mostrará la lista de obras de un artista cuando se implemente la búsqueda.';
-  section.append(h2, p);
-  app.appendChild(section);
+  app.appendChild(createState('Cargando obras del artista...'));
+
+  const encodedName = encodeURIComponent(name || '');
+  fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
+    .then((data) => {
+      const objectIds = data.objectIDs || [];
+      const total = data.total || 0;
+      const firstIds = objectIds.slice(0, 12);
+
+      if (!firstIds.length) {
+        app.innerHTML = '';
+        const section = document.createElement('section');
+        section.className = 'panel';
+        const h2 = document.createElement('h2');
+        h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
+        const p = document.createElement('p');
+        p.textContent = 'No se encontraron obras asociadas a este artista.';
+        section.append(h2, p);
+        app.appendChild(section);
+        return;
+      }
+
+      return Promise.allSettled(firstIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
+        app.innerHTML = '';
+        const section = document.createElement('section');
+        section.className = 'panel';
+
+        const h2 = document.createElement('h2');
+        h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
+        const intro = document.createElement('p');
+        intro.textContent = `Se encontraron ${total} obras asociadas.`;
+        section.append(h2, intro);
+
+        const grid = document.createElement('div');
+        grid.className = 'grid';
+
+        results.forEach((result) => {
+          if (result.status === 'fulfilled' && result.value) {
+            const item = result.value;
+            const card = createCard({
+              title: item.title || 'Sin título',
+              subtitle: item.artistDisplayName || 'Artista desconocido',
+              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+              imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+              actionLabel: 'Ver detalle',
+              onAction: () => navigateTo(`#detail/${item.objectID}`),
+            });
+            grid.appendChild(card);
+          }
+        });
+
+        section.appendChild(grid);
+        app.appendChild(section);
+      });
+    })
+    .catch(() => {
+      app.innerHTML = '';
+      app.appendChild(createState('No se pudieron cargar las obras del artista.', { onRetry: () => renderArtistView(app, name) }));
+    });
 }
 
 function renderCompareView(app) {

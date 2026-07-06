@@ -275,6 +275,10 @@ body {
   font-size: 0.95rem;
 }
 
+.artist-header {
+  margin-bottom: 1rem;
+}
+
 @media (max-width: 800px) {
   .detail-layout {
     grid-template-columns: 1fr;
