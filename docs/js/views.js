@@ -84,26 +84,123 @@ function getFallbackObjectById(id) {
 }
 
 function getFallbackObjectIdsByQuery(query = '') {
-  const normalized = (query || '').toLowerCase();
+  const normalize = (s = '') =>
+    String(s)
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/\p{Diacritic}/gu, '')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
 
-  if (normalized.includes('starry') || normalized.includes('night') || normalized.includes('van gogh')) {
-    return [436535];
-  }
+  const q = normalize(query || '');
+  if (!q) return Object.keys(FALLBACK_OBJECTS).map((k) => Number(k));
 
-  if (normalized.includes('mona') || normalized.includes('lisa') || normalized.includes('da vinci') || normalized.includes('leonardo')) {
-    return [437980];
-  }
+  const tokens = q.split(' ').filter(Boolean);
 
-  if (normalized.includes('wave') || normalized.includes('hokusai') || normalized.includes('kanagawa') || normalized.includes('japan')) {
-    return [459055];
-  }
+  // Build a simple local index from FALLBACK_OBJECTS
+  const index = Object.values(FALLBACK_OBJECTS).map((obj) => {
+    const text = normalize([obj.title, obj.artistDisplayName, obj.department].join(' '));
+    return { id: obj.objectID, text };
+  });
 
-  return [436535, 437980, 459055];
+  // Score objects by token matches
+  const scored = index
+    .map((entry) => {
+      let score = 0;
+      for (const t of tokens) {
+        if (entry.text.includes(t)) score += 2;
+        else if (t.length > 2 && entry.text.split(' ').some((w) => w.startsWith(t))) score += 1;
+      }
+      return { id: entry.id, score };
+    })
+    .filter((s) => s.score > 0)
+    .sort((a, b) => b.score - a.score);
+
+  if (scored.length) return scored.map((s) => s.id);
+
+  // fallback to simple keyword mapping for a few special cases (preserve previous behavior)
+  if (q.includes('starry') || q.includes('night') || q.includes('van gogh')) return [436535];
+  if (q.includes('mona') || q.includes('lisa') || q.includes('da vinci') || q.includes('leonardo')) return [437980];
+  if (q.includes('wave') || q.includes('hokusai') || q.includes('kanagawa') || q.includes('japan')) return [459055];
+
+  return Object.keys(FALLBACK_OBJECTS).map((k) => Number(k));
 }
 
 function resolveObjectDetails(ids) {
   const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
   return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
+}
+
+function saveCompareState(state) {
+  try {
+    const payload = {
+      A: state.selectedA ? { objectID: state.selectedA.objectID } : null,
+      B: state.selectedB ? { objectID: state.selectedB.objectID } : null,
+    };
+    const raw = JSON.stringify(payload);
+    window.sessionStorage.setItem('methub-compare', raw);
+    // also persist across sessions
+    try {
+      window.localStorage.setItem('methub-compare-persistent', raw);
+    } catch {
+      // ignore localStorage write errors (e.g., private mode)
+    }
+  } catch {
+    // ignore
+  }
+}
+
+function loadCompareState() {
+  try {
+    let raw = window.sessionStorage.getItem('methub-compare');
+    if (!raw) {
+      try {
+        raw = window.localStorage.getItem('methub-compare-persistent');
+      } catch {
+        raw = null;
+      }
+    }
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveObjectToCache(item) {
+  if (!item?.objectID) {
+    return;
+  }
+
+  try {
+    window.sessionStorage.setItem(`methub-object-${item.objectID}`, JSON.stringify(item));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+function getObjectFromCache(id) {
+  if (!id) {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(`methub-object-${id}`);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function openDetail(item) {
+  if (item?.objectID) {
+    saveObjectToCache(item);
+    saveRecentItem(item);
+    navigateTo(`#detail/${item.objectID}`);
+    return;
+  }
+
+  navigateTo('#home');
 }
 
 function readRecentItems() {
@@ -268,7 +365,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
         meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
         imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
         actionLabel: 'Ver detalle',
-        onAction: () => navigateTo(`#detail/${item.objectID}`),
+        onAction: () => openDetail(item),
       });
       recentGrid.appendChild(card);
     });
@@ -303,7 +400,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
       meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
       imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
       actionLabel: 'Ver detalle',
-      onAction: () => navigateTo(`#detail/${item.objectID}`),
+      onAction: () => openDetail(item),
     });
     grid.appendChild(card);
   });
@@ -665,7 +762,7 @@ function renderExploreResults(app, filters, elements, total, resolvedResults) {
         meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
         imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
         actionLabel: 'Ver detalle',
-        onAction: () => navigateTo(`#detail/${item.objectID}`),
+        onAction: () => openDetail(item),
       });
       grid.appendChild(card);
     });
@@ -804,148 +901,160 @@ function renderDetailView(app, id) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando detalle de la obra...'));
 
+  const cachedItem = getObjectFromCache(id);
+  if (cachedItem) {
+    saveRecentItem(cachedItem);
+    renderDetailContent(app, cachedItem);
+    return;
+  }
+
   fetchJson(`${API_BASE}/objects/${id}`)
     .then((item) => {
+      saveObjectToCache(item);
       saveRecentItem(item);
-      app.innerHTML = '';
-      const section = document.createElement('section');
-      section.className = 'panel detail-view';
-
-      const title = document.createElement('h2');
-      title.textContent = item.title || 'Sin título';
-
-      const actions = document.createElement('div');
-      actions.className = 'detail-actions';
-
-      const back = document.createElement('button');
-      back.className = 'secondary-btn';
-      back.textContent = '← Volver';
-      back.addEventListener('click', () => window.history.back());
-      actions.appendChild(back);
-
-      if (item.artistDisplayName) {
-        const artistButton = document.createElement('button');
-        artistButton.className = 'secondary-btn';
-        artistButton.textContent = 'Ver más obras del artista';
-        artistButton.addEventListener('click', () => navigateTo(`#artist/${encodeURIComponent(item.artistDisplayName)}`));
-        actions.appendChild(artistButton);
-      }
-
-      const compareButton = document.createElement('button');
-      compareButton.className = 'secondary-btn';
-      compareButton.textContent = 'Comparar';
-      compareButton.addEventListener('click', () => navigateTo('#compare'));
-      actions.appendChild(compareButton);
-
-      const layout = document.createElement('div');
-      layout.className = 'detail-layout';
-
-      const imageColumn = document.createElement('div');
-      imageColumn.className = 'detail-image-column';
-
-      const image = document.createElement('img');
-      image.className = 'detail-image';
-      image.src = item.primaryImage || item.primaryImageSmall || getImageFallbackSrc(item.title);
-      image.alt = item.title || 'Obra';
-      image.loading = 'eager';
-      image.decoding = 'async';
-      image.addEventListener('error', () => {
-        image.src = getImageFallbackSrc(item.title);
-      });
-      imageColumn.appendChild(image);
-
-      if (Array.isArray(item.additionalImages) && item.additionalImages.length) {
-        const thumbs = document.createElement('div');
-        thumbs.className = 'thumb-gallery';
-
-        item.additionalImages.slice(0, 4).forEach((src) => {
-          const thumb = document.createElement('img');
-          thumb.className = 'thumb-image';
-          thumb.src = src;
-          thumb.alt = 'Imagen adicional';
-          thumb.loading = 'lazy';
-          thumb.decoding = 'async';
-          thumb.addEventListener('error', () => {
-            thumb.src = getImageFallbackSrc('Sin imagen');
-          });
-          thumbs.appendChild(thumb);
-        });
-
-        imageColumn.appendChild(thumbs);
-      }
-
-      const infoColumn = document.createElement('div');
-      infoColumn.className = 'detail-info';
-
-      const artist = document.createElement('p');
-      artist.className = 'detail-subtitle';
-      artist.textContent = item.artistDisplayName || 'Artista desconocido';
-
-      const descriptionTitle = document.createElement('h3');
-      descriptionTitle.textContent = 'Biografía del artista';
-      const description = document.createElement('p');
-      description.textContent = item.artistDisplayBio || 'Sin descripción disponible.';
-
-      const metaSection = document.createElement('div');
-      metaSection.className = 'meta-section';
-      const metaTitle = document.createElement('h3');
-      metaTitle.textContent = 'Ficha técnica';
-      const metaList = document.createElement('dl');
-      metaList.className = 'detail-meta';
-
-      const fields = [
-        ['Fecha', item.objectDate || '—'],
-        ['Departamento', item.department || '—'],
-        ['Técnica', item.medium || '—'],
-        ['Dimensiones', item.dimensions || '—'],
-        ['Cultura', item.culture || '—'],
-        ['Periodo', item.period || '—'],
-        ['Clasificación', item.classification || '—'],
-        ['Adquisición', item.creditLine || '—'],
-      ];
-
-      fields.forEach(([label, value]) => {
-        const term = document.createElement('dt');
-        term.textContent = label;
-        const definition = document.createElement('dd');
-        definition.textContent = value;
-        metaList.append(term, definition);
-      });
-
-      metaSection.append(metaTitle, metaList);
-
-      const tagsSection = document.createElement('div');
-      tagsSection.className = 'tags-section';
-      const tagsTitle = document.createElement('h3');
-      tagsTitle.textContent = 'Tags';
-      const tags = document.createElement('div');
-      tags.className = 'tag-list';
-
-      if (Array.isArray(item.tags) && item.tags.length) {
-        item.tags.slice(0, 12).forEach((tag) => {
-          const chip = document.createElement('span');
-          chip.className = 'tag-chip';
-          chip.textContent = tag.term || 'Etiqueta';
-          tags.appendChild(chip);
-        });
-      } else {
-        const chip = document.createElement('span');
-        chip.className = 'tag-chip';
-        chip.textContent = 'Sin etiquetas';
-        tags.appendChild(chip);
-      }
-
-      tagsSection.append(tagsTitle, tags);
-
-      infoColumn.append(title, artist, descriptionTitle, description, metaSection, tagsSection);
-      layout.append(imageColumn, infoColumn);
-      section.append(actions, layout);
-      app.appendChild(section);
+      renderDetailContent(app, item);
     })
     .catch(() => {
       app.innerHTML = '';
       app.appendChild(createState('No se pudo cargar la obra solicitada.', { onRetry: () => renderDetailView(app, id) }));
     });
+}
+
+function renderDetailContent(app, item) {
+  app.innerHTML = '';
+  const section = document.createElement('section');
+  section.className = 'panel detail-view';
+
+  const title = document.createElement('h2');
+  title.textContent = item.title || 'Sin título';
+
+  const actions = document.createElement('div');
+  actions.className = 'detail-actions';
+
+  const back = document.createElement('button');
+  back.className = 'secondary-btn';
+  back.textContent = '← Volver';
+  back.addEventListener('click', () => window.history.back());
+  actions.appendChild(back);
+
+  if (item.artistDisplayName) {
+    const artistButton = document.createElement('button');
+    artistButton.className = 'secondary-btn';
+    artistButton.textContent = 'Ver más obras del artista';
+    artistButton.addEventListener('click', () => navigateTo(`#artist/${encodeURIComponent(item.artistDisplayName)}`));
+    actions.appendChild(artistButton);
+  }
+
+  const compareButton = document.createElement('button');
+  compareButton.className = 'secondary-btn';
+  compareButton.textContent = 'Comparar';
+  compareButton.addEventListener('click', () => navigateTo('#compare'));
+  actions.appendChild(compareButton);
+
+  const layout = document.createElement('div');
+  layout.className = 'detail-layout';
+
+  const imageColumn = document.createElement('div');
+  imageColumn.className = 'detail-image-column';
+
+  const image = document.createElement('img');
+  image.className = 'detail-image';
+  image.src = item.primaryImage || item.primaryImageSmall || getImageFallbackSrc(item.title);
+  image.alt = item.title || 'Obra';
+  image.loading = 'eager';
+  image.decoding = 'async';
+  image.addEventListener('error', () => {
+    image.src = getImageFallbackSrc(item.title);
+  });
+  imageColumn.appendChild(image);
+
+  if (Array.isArray(item.additionalImages) && item.additionalImages.length) {
+    const thumbs = document.createElement('div');
+    thumbs.className = 'thumb-gallery';
+
+    item.additionalImages.slice(0, 4).forEach((src) => {
+      const thumb = document.createElement('img');
+      thumb.className = 'thumb-image';
+      thumb.src = src;
+      thumb.alt = 'Imagen adicional';
+      thumb.loading = 'lazy';
+      thumb.decoding = 'async';
+      thumb.addEventListener('error', () => {
+        thumb.src = getImageFallbackSrc('Sin imagen');
+      });
+      thumbs.appendChild(thumb);
+    });
+
+    imageColumn.appendChild(thumbs);
+  }
+
+  const infoColumn = document.createElement('div');
+  infoColumn.className = 'detail-info';
+
+  const artist = document.createElement('p');
+  artist.className = 'detail-subtitle';
+  artist.textContent = item.artistDisplayName || 'Artista desconocido';
+
+  const descriptionTitle = document.createElement('h3');
+  descriptionTitle.textContent = 'Biografía del artista';
+  const description = document.createElement('p');
+  description.textContent = item.artistDisplayBio || 'Sin descripción disponible.';
+
+  const metaSection = document.createElement('div');
+  metaSection.className = 'meta-section';
+  const metaTitle = document.createElement('h3');
+  metaTitle.textContent = 'Ficha técnica';
+  const metaList = document.createElement('dl');
+  metaList.className = 'detail-meta';
+
+  const fields = [
+    ['Fecha', item.objectDate || '—'],
+    ['Departamento', item.department || '—'],
+    ['Técnica', item.medium || '—'],
+    ['Dimensiones', item.dimensions || '—'],
+    ['Cultura', item.culture || '—'],
+    ['Periodo', item.period || '—'],
+    ['Clasificación', item.classification || '—'],
+    ['Adquisición', item.creditLine || '—'],
+  ];
+
+  fields.forEach(([label, value]) => {
+    const term = document.createElement('dt');
+    term.textContent = label;
+    const definition = document.createElement('dd');
+    definition.textContent = value;
+    metaList.append(term, definition);
+  });
+
+  metaSection.append(metaTitle, metaList);
+
+  const tagsSection = document.createElement('div');
+  tagsSection.className = 'tags-section';
+  const tagsTitle = document.createElement('h3');
+  tagsTitle.textContent = 'Tags';
+  const tags = document.createElement('div');
+  tags.className = 'tag-list';
+
+  if (Array.isArray(item.tags) && item.tags.length) {
+    item.tags.slice(0, 12).forEach((tag) => {
+      const chip = document.createElement('span');
+      chip.className = 'tag-chip';
+      chip.textContent = tag.term || 'Etiqueta';
+      tags.appendChild(chip);
+    });
+  } else {
+    const chip = document.createElement('span');
+    chip.className = 'tag-chip';
+    chip.textContent = 'Sin etiquetas';
+    tags.appendChild(chip);
+  }
+
+  tagsSection.append(tagsTitle, tags);
+
+  infoColumn.append(title, artist, descriptionTitle, description, metaSection, tagsSection);
+  layout.append(imageColumn, infoColumn);
+  section.append(actions, layout);
+  app.appendChild(section);
 }
 
 function renderDepartmentsView(app) {
@@ -1035,7 +1144,7 @@ function renderArtistView(app, name) {
               meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
               imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
               actionLabel: 'Ver detalle',
-              onAction: () => navigateTo(`#detail/${item.objectID}`),
+              onAction: () => openDetail(item),
             });
             grid.appendChild(card);
           }
@@ -1157,6 +1266,7 @@ function renderCompareView(app) {
     } else {
       state.selectedB = item;
     }
+    saveCompareState(state);
     renderComparison();
   };
 
@@ -1168,6 +1278,54 @@ function renderCompareView(app) {
   panelB.addEventListener('select-item', (event) => {
     applySelection(event.detail.panelKey, event.detail.item);
   });
+
+  // Restore saved compare selections if present
+  const saved = loadCompareState();
+  if (saved) {
+    if (saved.A && saved.A.objectID) {
+      fetchJson(`${API_BASE}/objects/${saved.A.objectID}`)
+        .then((item) => {
+          if (item) {
+            const sel = panelA.querySelector('.compare-selected');
+            sel.innerHTML = '';
+            const card = createCard({
+              title: item.title || 'Sin título',
+              subtitle: item.artistDisplayName || 'Artista desconocido',
+              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+              actionLabel: 'Seleccionada',
+              onAction: () => {},
+            });
+            sel.appendChild(card);
+            state.selectedA = item;
+            renderComparison();
+          }
+        })
+        .catch(() => {});
+    }
+
+    if (saved.B && saved.B.objectID) {
+      fetchJson(`${API_BASE}/objects/${saved.B.objectID}`)
+        .then((item) => {
+          if (item) {
+            const sel = panelB.querySelector('.compare-selected');
+            sel.innerHTML = '';
+            const card = createCard({
+              title: item.title || 'Sin título',
+              subtitle: item.artistDisplayName || 'Artista desconocido',
+              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+              actionLabel: 'Seleccionada',
+              onAction: () => {},
+            });
+            sel.appendChild(card);
+            state.selectedB = item;
+            renderComparison();
+          }
+        })
+        .catch(() => {});
+    }
+  }
 
   app.appendChild(section);
 }

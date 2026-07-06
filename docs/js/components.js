@@ -18,15 +18,26 @@ function getImageFallbackSrc(title = 'Sin imagen') {
 function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = 'Ver detalle' }) {
   const article = document.createElement('article');
   article.className = 'card';
+  article.setAttribute('role', 'group');
+  article.tabIndex = 0;
+  article.setAttribute('aria-label', title || 'Obra');
 
-  if (imageSrc || true) {
+  // Render image with robust fallback handling
+  {
     const img = document.createElement('img');
     img.src = imageSrc || getImageFallbackSrc(title);
     img.alt = title || 'Obra';
     img.loading = 'lazy';
     img.decoding = 'async';
+    img.width = 300;
+    img.height = 200;
     img.addEventListener('error', () => {
-      img.src = getImageFallbackSrc(title);
+      // avoid infinite loop if fallback somehow errors
+      if (!img.dataset.fallback) {
+        img.dataset.fallback = '1';
+        img.src = getImageFallbackSrc(title);
+        img.alt = `Sin imagen: ${title || ''}`;
+      }
     });
     article.appendChild(img);
   }
@@ -50,8 +61,17 @@ function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = '
   if (onAction) {
     const button = document.createElement('button');
     button.textContent = actionLabel;
+    button.setAttribute('aria-label', `${actionLabel} ${title || ''}`);
     button.addEventListener('click', onAction);
     article.appendChild(button);
+
+    // Support keyboard activation when the whole card is focused
+    article.addEventListener('keydown', (ev) => {
+      if (ev.key === 'Enter' || ev.key === ' ') {
+        ev.preventDefault();
+        onAction();
+      }
+    });
   }
 
   return article;
