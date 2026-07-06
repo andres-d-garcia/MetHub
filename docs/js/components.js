@@ -6,6 +6,11 @@ function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = '
     const img = document.createElement('img');
     img.src = imageSrc;
     img.alt = title || 'Obra';
+    img.loading = 'lazy';
+    img.decoding = 'async';
+    img.addEventListener('error', () => {
+      img.src = 'https://via.placeholder.com/300x220?text=Sin+imagen';
+    });
     article.appendChild(img);
   }
 

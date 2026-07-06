@@ -156,6 +156,32 @@ body {
   justify-content: flex-end;
 }
 
+.stats-section {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 1.5rem;
+}
+
+.stat-card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.stat-card strong {
+  font-size: 1.35rem;
+  color: var(--accent);
+}
+
+.gallery-section {
+  margin-top: 1rem;
+}
+
 .aggregate-panel {
   margin: 1rem 0;
   padding: 1rem;
@@ -239,12 +265,21 @@ body {
 .detail-info {
   display: flex;
   flex-direction: column;
-  gap: 0.8rem;
+  gap: 0.9rem;
 }
 
 .detail-subtitle {
   color: var(--accent);
   font-weight: 700;
+  font-size: 1.05rem;
+}
+
+.meta-section,
+.tags-section {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.9rem;
 }
 
 .detail-meta {
@@ -277,6 +312,78 @@ body {
 
 .artist-header {
   margin-bottom: 1rem;
+}
+
+.compare-layout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.compare-panel {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 1rem;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.compare-panel input {
+  padding: 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.compare-results {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.suggestion-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: white;
+  padding: 0.7rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.compare-selected .card {
+  margin-top: 0.25rem;
+}
+
+.comparison-table-wrapper {
+  margin-top: 1rem;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
+}
+
+.comparison-table th,
+.comparison-table td {
+  border: 1px solid var(--border);
+  padding: 0.7rem;
+  text-align: left;
+}
+
+.comparison-table th {
+  background: var(--bg);
+}
+
+@media (max-width: 800px) {
+  .compare-layout {
+    grid-template-columns: 1fr;
+  }
 }
 
 @media (max-width: 800px) {

@@ -3,6 +3,32 @@ import { createCard, createState } from './components.js';
 import { navigateTo } from './router.js';
 
 const PAGE_SIZE = 12;
+const FALLBACK_HIGHLIGHTS = [
+  {
+    objectID: 436535,
+    title: 'The Starry Night',
+    artistDisplayName: 'Vincent van Gogh',
+    objectDate: '1889',
+    department: 'Paintings',
+    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Starry+Night',
+  },
+  {
+    objectID: 437980,
+    title: 'Mona Lisa',
+    artistDisplayName: 'Leonardo da Vinci',
+    objectDate: '1503',
+    department: 'European Paintings',
+    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Mona+Lisa',
+  },
+  {
+    objectID: 459055,
+    title: 'The Great Wave off Kanagawa',
+    artistDisplayName: 'Katsushika Hokusai',
+    objectDate: '1831',
+    department: 'Asian Art',
+    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Great+Wave',
+  },
+];
 
 function renderHomeView(app) {
   app.innerHTML = '';
@@ -14,8 +40,7 @@ function renderHomeView(app) {
   ])
     .then(([departmentsResult, searchResult]) => {
       if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
-        app.innerHTML = '';
-        app.appendChild(createState('No se pudieron cargar los datos del museo.', { onRetry: () => renderHomeView(app) }));
+        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })));
         return;
       }
 
@@ -40,8 +65,7 @@ function renderHomeView(app) {
       });
     })
     .catch(() => {
-      app.innerHTML = '';
-      app.appendChild(createState('Ocurrió un error inesperado.', { onRetry: () => renderHomeView(app) }));
+      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })));
     });
 }
 
@@ -53,11 +77,36 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   const title = document.createElement('h1');
   title.textContent = 'Explora la colección del Met';
   const intro = document.createElement('p');
-  intro.textContent = 'Una SPA inicial para navegar la colección del museo usando la API pública.';
-  const stats = document.createElement('p');
-  stats.textContent = `Departamentos: ${totalDepartments} · Obras destacadas revisadas: ${totalHighlights}`;
-  hero.append(title, intro, stats);
+  intro.textContent = 'Descubre obras maestras, departamentos curatoriales y datos reales de la colección del museo.';
+  const note = document.createElement('p');
+  note.className = 'note';
+  note.textContent = 'Si la API no responde, se muestran obras de ejemplo para mantener la vista operativa.';
+  hero.append(title, intro, note);
   app.appendChild(hero);
+
+  const statsSection = document.createElement('section');
+  statsSection.className = 'stats-section';
+
+  const statsCard1 = document.createElement('div');
+  statsCard1.className = 'stat-card';
+  statsCard1.innerHTML = `<strong>${totalDepartments}</strong><span>Departamentos</span>`;
+
+  const statsCard2 = document.createElement('div');
+  statsCard2.className = 'stat-card';
+  statsCard2.innerHTML = `<strong>${totalHighlights}</strong><span>Obras destacadas</span>`;
+
+  const statsCard3 = document.createElement('div');
+  statsCard3.className = 'stat-card';
+  statsCard3.innerHTML = '<strong>SPA</strong><span>Navegación sin recarga</span>';
+
+  statsSection.append(statsCard1, statsCard2, statsCard3);
+  app.appendChild(statsSection);
+
+  const gallerySection = document.createElement('section');
+  gallerySection.className = 'gallery-section';
+  const galleryTitle = document.createElement('h2');
+  galleryTitle.textContent = 'Obras destacadas';
+  gallerySection.appendChild(galleryTitle);
 
   const grid = document.createElement('div');
   grid.className = 'grid';
@@ -66,7 +115,8 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
 
   if (!validItems.length) {
     grid.appendChild(createState('No se pudieron cargar obras destacadas en este momento.'));
-    app.appendChild(grid);
+    gallerySection.appendChild(grid);
+    app.appendChild(gallerySection);
     return;
   }
 
@@ -83,7 +133,8 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     grid.appendChild(card);
   });
 
-  app.appendChild(grid);
+  gallerySection.appendChild(grid);
+  app.appendChild(gallerySection);
 }
 
 function renderExploreView(app) {
@@ -532,6 +583,11 @@ function renderDetailView(app, id) {
       image.className = 'detail-image';
       image.src = item.primaryImage || item.primaryImageSmall || 'https://via.placeholder.com/400x300?text=Sin+imagen';
       image.alt = item.title || 'Obra';
+      image.loading = 'eager';
+      image.decoding = 'async';
+      image.addEventListener('error', () => {
+        image.src = 'https://via.placeholder.com/400x300?text=Sin+imagen';
+      });
       imageColumn.appendChild(image);
 
       if (Array.isArray(item.additionalImages) && item.additionalImages.length) {
@@ -543,6 +599,11 @@ function renderDetailView(app, id) {
           thumb.className = 'thumb-image';
           thumb.src = src;
           thumb.alt = 'Imagen adicional';
+          thumb.loading = 'lazy';
+          thumb.decoding = 'async';
+          thumb.addEventListener('error', () => {
+            thumb.src = 'https://via.placeholder.com/120x90?text=Sin+imagen';
+          });
           thumbs.appendChild(thumb);
         });
 
@@ -556,9 +617,15 @@ function renderDetailView(app, id) {
       artist.className = 'detail-subtitle';
       artist.textContent = item.artistDisplayName || 'Artista desconocido';
 
+      const descriptionTitle = document.createElement('h3');
+      descriptionTitle.textContent = 'Biografía del artista';
       const description = document.createElement('p');
-      description.textContent = item.artistDisplayBio || item.objectDate || 'Sin descripción';
+      description.textContent = item.artistDisplayBio || 'Sin descripción disponible.';
 
+      const metaSection = document.createElement('div');
+      metaSection.className = 'meta-section';
+      const metaTitle = document.createElement('h3');
+      metaTitle.textContent = 'Ficha técnica';
       const metaList = document.createElement('dl');
       metaList.className = 'detail-meta';
 
@@ -581,6 +648,12 @@ function renderDetailView(app, id) {
         metaList.append(term, definition);
       });
 
+      metaSection.append(metaTitle, metaList);
+
+      const tagsSection = document.createElement('div');
+      tagsSection.className = 'tags-section';
+      const tagsTitle = document.createElement('h3');
+      tagsTitle.textContent = 'Tags';
       const tags = document.createElement('div');
       tags.className = 'tag-list';
 
@@ -598,7 +671,9 @@ function renderDetailView(app, id) {
         tags.appendChild(chip);
       }
 
-      infoColumn.append(title, artist, description, metaList, tags);
+      tagsSection.append(tagsTitle, tags);
+
+      infoColumn.append(title, artist, descriptionTitle, description, metaSection, tagsSection);
       layout.append(imageColumn, infoColumn);
       section.append(actions, layout);
       app.appendChild(section);
@@ -703,12 +778,176 @@ function renderCompareView(app) {
   app.innerHTML = '';
   const section = document.createElement('section');
   section.className = 'panel';
+
   const h2 = document.createElement('h2');
   h2.textContent = 'Comparador';
-  const p = document.createElement('p');
-  p.textContent = 'Aquí irá el buscador interno de dos paneles y la tabla comparativa.';
-  section.append(h2, p);
+  const intro = document.createElement('p');
+  intro.textContent = 'Busca dos obras y compáralas lado a lado.';
+  section.append(h2, intro);
+
+  const compareLayout = document.createElement('div');
+  compareLayout.className = 'compare-layout';
+
+  const state = {
+    selectedA: null,
+    selectedB: null,
+  };
+
+  const panelA = createComparePanel('Obra A', state, 'A');
+  const panelB = createComparePanel('Obra B', state, 'B');
+
+  compareLayout.append(panelA, panelB);
+  section.appendChild(compareLayout);
+
+  const tableWrapper = document.createElement('div');
+  tableWrapper.className = 'comparison-table-wrapper';
+  section.appendChild(tableWrapper);
+
+  const renderComparison = () => {
+    if (!state.selectedA || !state.selectedB) {
+      tableWrapper.innerHTML = '';
+      return;
+    }
+
+    const table = document.createElement('table');
+    table.className = 'comparison-table';
+
+    const rows = [
+      ['Artista', state.selectedA.artistDisplayName || 'Artista desconocido', state.selectedB.artistDisplayName || 'Artista desconocido'],
+      ['Fecha', state.selectedA.objectDate || '—', state.selectedB.objectDate || '—'],
+      ['Departamento', state.selectedA.department || '—', state.selectedB.department || '—'],
+      ['Técnica', state.selectedA.medium || '—', state.selectedB.medium || '—'],
+      ['Clasificación', state.selectedA.classification || '—', state.selectedB.classification || '—'],
+      ['Cultura', state.selectedA.culture || '—', state.selectedB.culture || '—'],
+    ];
+
+    const tbody = document.createElement('tbody');
+    rows.forEach(([label, left, right]) => {
+      const tr = document.createElement('tr');
+      const tdLabel = document.createElement('th');
+      tdLabel.textContent = label;
+      const tdLeft = document.createElement('td');
+      tdLeft.textContent = left;
+      const tdRight = document.createElement('td');
+      tdRight.textContent = right;
+      tr.append(tdLabel, tdLeft, tdRight);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    tableWrapper.innerHTML = '';
+    tableWrapper.appendChild(table);
+  };
+
+  const applySelection = (panelKey, item) => {
+    if (panelKey === 'A') {
+      state.selectedA = item;
+    } else {
+      state.selectedB = item;
+    }
+    renderComparison();
+  };
+
+  panelA.dataset.onSelect = 'A';
+  panelB.dataset.onSelect = 'B';
+  panelA.addEventListener('select-item', (event) => {
+    applySelection(event.detail.panelKey, event.detail.item);
+  });
+  panelB.addEventListener('select-item', (event) => {
+    applySelection(event.detail.panelKey, event.detail.item);
+  });
+
   app.appendChild(section);
+}
+
+function createComparePanel(title, state, panelKey) {
+  const panel = document.createElement('div');
+  panel.className = 'compare-panel';
+
+  const heading = document.createElement('h3');
+  heading.textContent = title;
+  panel.appendChild(heading);
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'text';
+  searchInput.placeholder = 'Busca una obra por nombre o artista';
+  panel.appendChild(searchInput);
+
+  const results = document.createElement('div');
+  results.className = 'compare-results';
+  panel.appendChild(results);
+
+  const selected = document.createElement('div');
+  selected.className = 'compare-selected';
+  panel.appendChild(selected);
+
+  let debounceTimer;
+
+  searchInput.addEventListener('input', () => {
+    const value = searchInput.value.trim();
+    clearTimeout(debounceTimer);
+    results.innerHTML = '';
+
+    if (!value) {
+      results.appendChild(createState('Busca y elige una obra para comparar.'));
+      return;
+    }
+
+    results.appendChild(createState('Buscando obras...'));
+
+    debounceTimer = window.setTimeout(() => {
+      fetchJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
+        .then((data) => {
+          const ids = (data.objectIDs || []).slice(0, 6);
+          if (!ids.length) {
+            results.innerHTML = '';
+            results.appendChild(createState('No se encontraron obras con ese término.'));
+            return;
+          }
+
+          return Promise.allSettled(ids.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((resolved) => {
+            results.innerHTML = '';
+            resolved.forEach((result) => {
+              if (result.status === 'fulfilled' && result.value) {
+                const item = result.value;
+                const suggestion = document.createElement('button');
+                suggestion.className = 'suggestion-card';
+                suggestion.innerHTML = `<strong>${item.title || 'Sin título'}</strong><span>${item.artistDisplayName || 'Artista desconocido'}</span>`;
+
+                const alreadySelected = panelKey === 'A' ? state.selectedB?.objectID === item.objectID : state.selectedA?.objectID === item.objectID;
+                suggestion.disabled = Boolean(alreadySelected);
+
+                suggestion.addEventListener('click', () => {
+                  if (suggestion.disabled) {
+                    return;
+                  }
+
+                  selected.innerHTML = '';
+                  const card = createCard({
+                    title: item.title || 'Sin título',
+                    subtitle: item.artistDisplayName || 'Artista desconocido',
+                    meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+                    imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+                    actionLabel: 'Seleccionada',
+                    onAction: () => {},
+                  });
+                  selected.appendChild(card);
+                  results.innerHTML = '';
+                  panel.dispatchEvent(new CustomEvent('select-item', { detail: { panelKey, item } }));
+                });
+                results.appendChild(suggestion);
+              }
+            });
+          });
+        })
+        .catch(() => {
+          results.innerHTML = '';
+          results.appendChild(createState('No se pudo buscar en este momento.', { onRetry: () => searchInput.dispatchEvent(new Event('input')) }));
+        });
+    }, 400);
+  });
+
+  return panel;
 }
 
 export {
