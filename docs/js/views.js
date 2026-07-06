@@ -106,6 +106,37 @@ function resolveObjectDetails(ids) {
   return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
 }
 
+function readRecentItems() {
+  try {
+    const raw = window.localStorage.getItem('methub-recent-items');
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveRecentItem(item) {
+  if (!item?.objectID) {
+    return;
+  }
+
+  const current = readRecentItems().filter((entry) => String(entry.objectID) !== String(item.objectID));
+  current.unshift({
+    objectID: item.objectID,
+    title: item.title || 'Sin título',
+    artistDisplayName: item.artistDisplayName || 'Artista desconocido',
+    objectDate: item.objectDate || '—',
+    department: item.department || '—',
+    primaryImageSmall: item.primaryImageSmall || getImageFallbackSrc(item.title),
+  });
+
+  try {
+    window.localStorage.setItem('methub-recent-items', JSON.stringify(current.slice(0, 4)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
 function renderHomeView(app) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando obras destacadas...'));
@@ -137,7 +168,7 @@ function renderHomeView(app) {
       }
 
       return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
-        renderHomeContent(app, departments.length, objectIds.length, results);
+        renderHomeContent(app, departments.length, objectIds.length, results, departments);
       });
     })
     .catch(() => {
@@ -145,7 +176,7 @@ function renderHomeView(app) {
     });
 }
 
-function renderHomeContent(app, totalDepartments, totalHighlights, objectResults) {
+function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = []) {
   app.innerHTML = '';
 
   const hero = document.createElement('section');
@@ -157,7 +188,22 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   const note = document.createElement('p');
   note.className = 'note';
   note.textContent = 'Si la API no responde, se muestran obras de ejemplo para mantener la vista operativa.';
-  hero.append(title, intro, note);
+
+  const actions = document.createElement('div');
+  actions.className = 'hero-actions';
+
+  const exploreBtn = document.createElement('button');
+  exploreBtn.className = 'secondary-btn';
+  exploreBtn.textContent = 'Explorar obras';
+  exploreBtn.addEventListener('click', () => navigateTo('#explore'));
+
+  const departmentsBtn = document.createElement('button');
+  departmentsBtn.className = 'secondary-btn';
+  departmentsBtn.textContent = 'Ver departamentos';
+  departmentsBtn.addEventListener('click', () => navigateTo('#departments'));
+
+  actions.append(exploreBtn, departmentsBtn);
+  hero.append(title, intro, note, actions);
   app.appendChild(hero);
 
   const statsSection = document.createElement('section');
@@ -177,6 +223,59 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
 
   statsSection.append(statsCard1, statsCard2, statsCard3);
   app.appendChild(statsSection);
+
+  if (departments.length) {
+    const departmentsSection = document.createElement('section');
+    departmentsSection.className = 'gallery-section';
+    const departmentsTitle = document.createElement('h2');
+    departmentsTitle.textContent = 'Departamentos destacados';
+    departmentsSection.appendChild(departmentsTitle);
+
+    const departmentsGrid = document.createElement('div');
+    departmentsGrid.className = 'grid';
+
+    departments.slice(0, 6).forEach((department) => {
+      const icon = getDepartmentIcon(department.displayName || '');
+      const card = createCard({
+        title: `${icon} ${department.displayName || 'Departamento'}`,
+        subtitle: `ID ${department.departmentId || '—'}`,
+        meta: 'Explora obras de este departamento',
+        actionLabel: 'Ver obras',
+        onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
+      });
+      departmentsGrid.appendChild(card);
+    });
+
+    departmentsSection.appendChild(departmentsGrid);
+    app.appendChild(departmentsSection);
+  }
+
+  const recentItems = readRecentItems();
+  if (recentItems.length) {
+    const recentSection = document.createElement('section');
+    recentSection.className = 'gallery-section';
+    const recentTitle = document.createElement('h2');
+    recentTitle.textContent = 'Visto recientemente';
+    recentSection.appendChild(recentTitle);
+
+    const recentGrid = document.createElement('div');
+    recentGrid.className = 'grid';
+
+    recentItems.forEach((item) => {
+      const card = createCard({
+        title: item.title || 'Sin título',
+        subtitle: item.artistDisplayName || 'Artista desconocido',
+        meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+        imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+        actionLabel: 'Ver detalle',
+        onAction: () => navigateTo(`#detail/${item.objectID}`),
+      });
+      recentGrid.appendChild(card);
+    });
+
+    recentSection.appendChild(recentGrid);
+    app.appendChild(recentSection);
+  }
 
   const gallerySection = document.createElement('section');
   gallerySection.className = 'gallery-section';
@@ -251,7 +350,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
     yearTo: params.get('dateEnd') || '',
     isHighlight: params.get('isHighlight') === 'true',
     hasImages: params.get('hasImages') === 'true',
-    page: 1,
+    page: Number(params.get('page') || 1),
   };
 
   const searchField = document.createElement('div');
@@ -317,6 +416,10 @@ function renderExploreView(app, params = new URLSearchParams()) {
   aggregates.className = 'aggregate-panel';
   section.appendChild(aggregates);
 
+  const resultsSummary = document.createElement('div');
+  resultsSummary.className = 'results-summary';
+  section.appendChild(resultsSummary);
+
   const results = document.createElement('div');
   results.className = 'results-grid';
   section.appendChild(results);
@@ -329,6 +432,36 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
   let searchTimer;
 
+  const syncExploreHash = () => {
+    const hashParams = new URLSearchParams();
+    if (filters.q) {
+      hashParams.set('q', filters.q);
+    }
+    if (filters.department) {
+      hashParams.set('departmentId', filters.department);
+    }
+    if (filters.yearFrom) {
+      hashParams.set('dateBegin', filters.yearFrom);
+    }
+    if (filters.yearTo) {
+      hashParams.set('dateEnd', filters.yearTo);
+    }
+    if (filters.isHighlight) {
+      hashParams.set('isHighlight', 'true');
+    }
+    if (filters.hasImages) {
+      hashParams.set('hasImages', 'true');
+    }
+    if (filters.page > 1) {
+      hashParams.set('page', String(filters.page));
+    }
+
+    const nextHash = hashParams.toString() ? `#explore?${hashParams.toString()}` : '#explore';
+    if (window.location.hash !== nextHash) {
+      window.location.hash = nextHash;
+    }
+  };
+
   const applyFilters = (resetPage = true) => {
     if (resetPage) {
       filters.page = 1;
@@ -336,6 +469,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
     clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => {
+      syncExploreHash();
       loadExploreResults(app, filters, { results, aggregates, pagination });
     }, 400);
   };
@@ -414,7 +548,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
       controls.appendChild(message);
     });
 
-  loadExploreResults(app, filters, { results, aggregates, pagination });
+  loadExploreResults(app, filters, { results, aggregates, pagination, resultsSummary });
 }
 
 function populateDepartments(select, departments) {
@@ -472,7 +606,7 @@ function loadExploreResults(app, filters, elements) {
       }
 
       return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination }, total, resolvedResults);
+        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, total, resolvedResults);
       });
     })
     .catch(() => {
@@ -485,7 +619,7 @@ function loadExploreResults(app, filters, elements) {
       }
 
       return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination }, fallbackIds.length, resolvedResults);
+        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, fallbackIds.length, resolvedResults);
       });
     });
 }
@@ -508,14 +642,18 @@ function renderEmptyExploreState(results, aggregates, pagination, total) {
 }
 
 function renderExploreResults(app, filters, elements, total, resolvedResults) {
-  const { results, aggregates, pagination } = elements;
+  const { results, aggregates, pagination, resultsSummary } = elements;
   const validItems = resolvedResults.filter((result) => result.status === 'fulfilled' && result.value);
 
   results.innerHTML = '';
+  resultsSummary.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'results-grid';
 
   if (!validItems.length) {
+    const summaryText = document.createElement('p');
+    summaryText.textContent = 'No hay resultados para esta página.';
+    resultsSummary.appendChild(summaryText);
     grid.appendChild(createState('No se pudieron cargar las obras de esta página.'));
     results.appendChild(grid);
   } else {
@@ -531,6 +669,9 @@ function renderExploreResults(app, filters, elements, total, resolvedResults) {
       });
       grid.appendChild(card);
     });
+    const summaryText = document.createElement('p');
+    summaryText.textContent = `Mostrando ${validItems.length} obras de ${total} resultados totales.`;
+    resultsSummary.appendChild(summaryText);
     results.appendChild(grid);
   }
 
@@ -631,6 +772,7 @@ function renderPagination(pagination, filters, total) {
   previousButton.disabled = currentPage <= 1;
   previousButton.addEventListener('click', () => {
     filters.page = Math.max(1, currentPage - 1);
+    syncExploreHash();
     loadExploreResults(document.getElementById('app'), filters, {
       results: pagination.parentElement.querySelector('.results-grid'),
       aggregates: pagination.parentElement.querySelector('.aggregate-panel'),
@@ -647,6 +789,7 @@ function renderPagination(pagination, filters, total) {
   nextButton.disabled = currentPage >= totalPages;
   nextButton.addEventListener('click', () => {
     filters.page = Math.min(totalPages, currentPage + 1);
+    syncExploreHash();
     loadExploreResults(document.getElementById('app'), filters, {
       results: pagination.parentElement.querySelector('.results-grid'),
       aggregates: pagination.parentElement.querySelector('.aggregate-panel'),
@@ -663,6 +806,7 @@ function renderDetailView(app, id) {
 
   fetchJson(`${API_BASE}/objects/${id}`)
     .then((item) => {
+      saveRecentItem(item);
       app.innerHTML = '';
       const section = document.createElement('section');
       section.className = 'panel detail-view';
