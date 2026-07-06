@@ -367,6 +367,57 @@ body {
   width: 100%;
   border-collapse: collapse;
   background: white;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.comparison-table th,
+.comparison-table td {
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.comparison-table thead th {
+  background: #f7efe4;
+  font-weight: 700;
+}
+
+.diff-label {
+  background: #f7efe4;
+}
+
+.diff-cell {
+  background: #fff3e8;
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.diff-badge {
+  display: inline-block;
+  margin-top: 0.35rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 999px;
+  background: var(--accent);
+  color: white;
+  font-size: 0.8rem;
+}
+
+.compare-note {
+  margin-top: 0.75rem;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.comparison-table-wrapper {
+  margin-top: 1rem;
+}
+
+.comparison-table {
+  width: 100%;
+  border-collapse: collapse;
+  background: white;
 }
 
 .comparison-table th,

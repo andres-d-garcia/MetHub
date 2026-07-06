@@ -1,15 +1,32 @@
+function getImageFallbackSrc(title = 'Sin imagen') {
+  const text = String(title || 'Sin imagen')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="600" height="400" viewBox="0 0 600 400">
+      <rect width="100%" height="100%" fill="#f5efe6" />
+      <rect x="24" y="24" width="552" height="352" rx="24" fill="#fffdf8" stroke="#ddd3c4" stroke-width="3" />
+      <text x="50%" y="48%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-size="28" fill="#8b3e2f">${text}</text>
+      <text x="50%" y="62%" text-anchor="middle" dominant-baseline="middle" font-family="Georgia, serif" font-size="20" fill="#666">Sin imagen disponible</text>
+    </svg>`;
+
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+}
+
 function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = 'Ver detalle' }) {
   const article = document.createElement('article');
   article.className = 'card';
 
-  if (imageSrc) {
+  if (imageSrc || true) {
     const img = document.createElement('img');
-    img.src = imageSrc;
+    img.src = imageSrc || getImageFallbackSrc(title);
     img.alt = title || 'Obra';
     img.loading = 'lazy';
     img.decoding = 'async';
     img.addEventListener('error', () => {
-      img.src = 'https://via.placeholder.com/300x220?text=Sin+imagen';
+      img.src = getImageFallbackSrc(title);
     });
     article.appendChild(img);
   }
@@ -65,4 +82,4 @@ function createState(message, options = {}) {
   return section;
 }
 
-export { createCard, createState };
+export { createCard, createState, getImageFallbackSrc };

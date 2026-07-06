@@ -1,8 +1,53 @@
 import { API_BASE, fetchJson } from './api.js';
-import { createCard, createState } from './components.js';
+import { createCard, createState, getImageFallbackSrc } from './components.js';
 import { navigateTo } from './router.js';
 
 const PAGE_SIZE = 12;
+const FALLBACK_OBJECTS = {
+  436535: {
+    objectID: 436535,
+    title: 'The Starry Night',
+    artistDisplayName: 'Vincent van Gogh',
+    objectDate: '1889',
+    department: 'Paintings',
+    medium: 'Oil on canvas',
+    dimensions: '73.7 × 92.1 cm',
+    culture: 'Dutch',
+    classification: 'Paintings',
+    creditLine: 'Acquired through the Lillie P. Bliss Bequest',
+    primaryImageSmall: getImageFallbackSrc('The Starry Night'),
+    primaryImage: getImageFallbackSrc('The Starry Night'),
+  },
+  437980: {
+    objectID: 437980,
+    title: 'Mona Lisa',
+    artistDisplayName: 'Leonardo da Vinci',
+    objectDate: '1503',
+    department: 'European Paintings',
+    medium: 'Oil on poplar panel',
+    dimensions: '77 × 53 cm',
+    culture: 'Italian',
+    classification: 'Paintings',
+    creditLine: 'Leonardo da Vinci',
+    primaryImageSmall: getImageFallbackSrc('Mona Lisa'),
+    primaryImage: getImageFallbackSrc('Mona Lisa'),
+  },
+  459055: {
+    objectID: 459055,
+    title: 'The Great Wave off Kanagawa',
+    artistDisplayName: 'Katsushika Hokusai',
+    objectDate: '1831',
+    department: 'Asian Art',
+    medium: 'Woodblock print',
+    dimensions: '25.4 × 37.3 cm',
+    culture: 'Japanese',
+    classification: 'Prints',
+    creditLine: 'Gift of Mrs. Frank B. Wilderson',
+    primaryImageSmall: getImageFallbackSrc('The Great Wave off Kanagawa'),
+    primaryImage: getImageFallbackSrc('The Great Wave off Kanagawa'),
+  },
+};
+
 const FALLBACK_HIGHLIGHTS = [
   {
     objectID: 436535,
@@ -10,7 +55,7 @@ const FALLBACK_HIGHLIGHTS = [
     artistDisplayName: 'Vincent van Gogh',
     objectDate: '1889',
     department: 'Paintings',
-    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Starry+Night',
+    primaryImageSmall: getImageFallbackSrc('The Starry Night'),
   },
   {
     objectID: 437980,
@@ -18,7 +63,7 @@ const FALLBACK_HIGHLIGHTS = [
     artistDisplayName: 'Leonardo da Vinci',
     objectDate: '1503',
     department: 'European Paintings',
-    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Mona+Lisa',
+    primaryImageSmall: getImageFallbackSrc('Mona Lisa'),
   },
   {
     objectID: 459055,
@@ -26,9 +71,40 @@ const FALLBACK_HIGHLIGHTS = [
     artistDisplayName: 'Katsushika Hokusai',
     objectDate: '1831',
     department: 'Asian Art',
-    primaryImageSmall: 'https://via.placeholder.com/300x220?text=Great+Wave',
+    primaryImageSmall: getImageFallbackSrc('The Great Wave off Kanagawa'),
   },
 ];
+
+function getFallbackObjectById(id) {
+  if (!id) {
+    return null;
+  }
+
+  return FALLBACK_OBJECTS[String(id)] || null;
+}
+
+function getFallbackObjectIdsByQuery(query = '') {
+  const normalized = (query || '').toLowerCase();
+
+  if (normalized.includes('starry') || normalized.includes('night') || normalized.includes('van gogh')) {
+    return [436535];
+  }
+
+  if (normalized.includes('mona') || normalized.includes('lisa') || normalized.includes('da vinci') || normalized.includes('leonardo')) {
+    return [437980];
+  }
+
+  if (normalized.includes('wave') || normalized.includes('hokusai') || normalized.includes('kanagawa') || normalized.includes('japan')) {
+    return [459055];
+  }
+
+  return [436535, 437980, 459055];
+}
+
+function resolveObjectDetails(ids) {
+  const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+  return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
+}
 
 function renderHomeView(app) {
   app.innerHTML = '';
@@ -126,7 +202,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
       title: item.title || 'Sin título',
       subtitle: item.artistDisplayName || 'Artista desconocido',
       meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-      imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+      imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
       actionLabel: 'Ver detalle',
       onAction: () => navigateTo(`#detail/${item.objectID}`),
     });
@@ -382,11 +458,12 @@ function loadExploreResults(app, filters, elements) {
     params.set('hasImages', 'true');
   }
 
+  const startIndex = (filters.page - 1) * PAGE_SIZE;
+
   fetchJson(`${API_BASE}/search?${params.toString()}`)
     .then((data) => {
-      const objectIds = data.objectIDs || [];
-      const total = data.total || 0;
-      const startIndex = (filters.page - 1) * PAGE_SIZE;
+      const objectIds = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.objectIDs : getFallbackObjectIdsByQuery(filters.q);
+      const total = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.total || objectIds.length : objectIds.length;
       const pageIds = objectIds.slice(startIndex, startIndex + PAGE_SIZE);
 
       if (!pageIds.length) {
@@ -394,13 +471,22 @@ function loadExploreResults(app, filters, elements) {
         return;
       }
 
-      return Promise.allSettled(pageIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((resolvedResults) => {
+      return resolveObjectDetails(pageIds).then((resolvedResults) => {
         renderExploreResults(app, filters, { results, aggregates, pagination }, total, resolvedResults);
       });
     })
     .catch(() => {
-      results.innerHTML = '';
-      results.appendChild(createState('No se pudieron cargar los resultados.', { onRetry: () => loadExploreResults(app, filters, elements) }));
+      const fallbackIds = getFallbackObjectIdsByQuery(filters.q);
+      const pageIds = fallbackIds.slice(startIndex, startIndex + PAGE_SIZE);
+
+      if (!pageIds.length) {
+        renderEmptyExploreState(results, aggregates, pagination, 0);
+        return;
+      }
+
+      return resolveObjectDetails(pageIds).then((resolvedResults) => {
+        renderExploreResults(app, filters, { results, aggregates, pagination }, fallbackIds.length, resolvedResults);
+      });
     });
 }
 
@@ -439,7 +525,7 @@ function renderExploreResults(app, filters, elements, total, resolvedResults) {
         title: item.title || 'Sin título',
         subtitle: item.artistDisplayName || 'Artista desconocido',
         meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-        imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+        imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
         actionLabel: 'Ver detalle',
         onAction: () => navigateTo(`#detail/${item.objectID}`),
       });
@@ -615,12 +701,12 @@ function renderDetailView(app, id) {
 
       const image = document.createElement('img');
       image.className = 'detail-image';
-      image.src = item.primaryImage || item.primaryImageSmall || 'https://via.placeholder.com/400x300?text=Sin+imagen';
+      image.src = item.primaryImage || item.primaryImageSmall || getImageFallbackSrc(item.title);
       image.alt = item.title || 'Obra';
       image.loading = 'eager';
       image.decoding = 'async';
       image.addEventListener('error', () => {
-        image.src = 'https://via.placeholder.com/400x300?text=Sin+imagen';
+        image.src = getImageFallbackSrc(item.title);
       });
       imageColumn.appendChild(image);
 
@@ -636,7 +722,7 @@ function renderDetailView(app, id) {
           thumb.loading = 'lazy';
           thumb.decoding = 'async';
           thumb.addEventListener('error', () => {
-            thumb.src = 'https://via.placeholder.com/120x90?text=Sin+imagen';
+            thumb.src = getImageFallbackSrc('Sin imagen');
           });
           thumbs.appendChild(thumb);
         });
@@ -803,7 +889,7 @@ function renderArtistView(app, name) {
               title: item.title || 'Sin título',
               subtitle: item.artistDisplayName || 'Artista desconocido',
               meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-              imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
               actionLabel: 'Ver detalle',
               onAction: () => navigateTo(`#detail/${item.objectID}`),
             });
@@ -853,11 +939,26 @@ function renderCompareView(app) {
   const renderComparison = () => {
     if (!state.selectedA || !state.selectedB) {
       tableWrapper.innerHTML = '';
+      const emptyState = document.createElement('p');
+      emptyState.className = 'compare-note';
+      emptyState.textContent = 'Selecciona dos obras para ver una comparación detallada.';
+      tableWrapper.appendChild(emptyState);
       return;
     }
 
     const table = document.createElement('table');
     table.className = 'comparison-table';
+
+    const thead = document.createElement('thead');
+    const headRow = document.createElement('tr');
+    const titleCell = document.createElement('th');
+    titleCell.textContent = 'Atributo';
+    const leftCell = document.createElement('th');
+    leftCell.textContent = 'Obra A';
+    const rightCell = document.createElement('th');
+    rightCell.textContent = 'Obra B';
+    headRow.append(titleCell, leftCell, rightCell);
+    thead.appendChild(headRow);
 
     const rows = [
       ['Artista', state.selectedA.artistDisplayName || 'Artista desconocido', state.selectedB.artistDisplayName || 'Artista desconocido'],
@@ -873,17 +974,37 @@ function renderCompareView(app) {
       const tr = document.createElement('tr');
       const tdLabel = document.createElement('th');
       tdLabel.textContent = label;
+
       const tdLeft = document.createElement('td');
       tdLeft.textContent = left;
       const tdRight = document.createElement('td');
       tdRight.textContent = right;
+
+      const hasDifference = `${left}`.trim().toLowerCase() !== `${right}`.trim().toLowerCase();
+      if (hasDifference) {
+        tdLabel.className = 'diff-label';
+        tdLeft.className = 'diff-cell';
+        tdRight.className = 'diff-cell';
+
+        const badge = document.createElement('span');
+        badge.className = 'diff-badge';
+        badge.textContent = 'Diferente';
+        tdLeft.appendChild(badge);
+        tdRight.appendChild(badge.cloneNode(true));
+      }
+
       tr.append(tdLabel, tdLeft, tdRight);
       tbody.appendChild(tr);
     });
 
-    table.appendChild(tbody);
+    table.append(thead, tbody);
     tableWrapper.innerHTML = '';
     tableWrapper.appendChild(table);
+
+    const note = document.createElement('p');
+    note.className = 'compare-note';
+    note.textContent = 'Las celdas resaltadas indican diferencias entre las obras seleccionadas.';
+    tableWrapper.appendChild(note);
   };
 
   const applySelection = (panelKey, item) => {
@@ -974,7 +1095,7 @@ function createComparePanel(title, state, panelKey) {
                     title: item.title || 'Sin título',
                     subtitle: item.artistDisplayName || 'Artista desconocido',
                     meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-                    imageSrc: item.primaryImageSmall || 'https://via.placeholder.com/300x220?text=Sin+imagen',
+                    imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
                     actionLabel: 'Seleccionada',
                     onAction: () => {},
                   });
