@@ -16,9 +16,17 @@ function init() {
   renderRoute();
 }
 
+function showRouteTransition() {
+  app.classList.add('route-transition');
+  window.setTimeout(() => {
+    app.classList.remove('route-transition');
+  }, 180);
+}
+
 function renderRoute() {
   const hash = getRoute();
   updateActiveNav(navLinks);
+  showRouteTransition();
 
   if (hash.startsWith('#detail/')) {
     const id = hash.split('/')[1];
