@@ -6,7 +6,7 @@ import {
   renderArtistView,
   renderCompareView,
 } from './views.js';
-import { getRoute, updateActiveNav } from './router.js';
+import { getHashParams, getRoute, updateActiveNav } from './router.js';
 
 const app = document.getElementById('app');
 const navLinks = Array.from(document.querySelectorAll('.nav-links a'));
@@ -32,9 +32,10 @@ function renderRoute() {
     return;
   }
 
-  switch (hash) {
+  const { route } = getHashParams();
+  switch (route) {
     case '#explore':
-      renderExploreView(app);
+      renderExploreView(app, getHashParams().params);
       break;
     case '#departments':
       renderDepartmentsView(app);

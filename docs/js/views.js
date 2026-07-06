@@ -137,7 +137,25 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   app.appendChild(gallerySection);
 }
 
-function renderExploreView(app) {
+function getDepartmentIcon(name) {
+  const normalized = (name || '').toLowerCase();
+  if (normalized.includes('paint')) return '🎨';
+  if (normalized.includes('sculpt')) return '🗿';
+  if (normalized.includes('draw')) return '✏️';
+  if (normalized.includes('print')) return '🖼️';
+  if (normalized.includes('photo')) return '📷';
+  if (normalized.includes('text')) return '🧵';
+  if (normalized.includes('armor')) return '🛡️';
+  if (normalized.includes('costume')) return '👗';
+  if (normalized.includes('musical')) return '🎼';
+  if (normalized.includes('coin')) return '🪙';
+  if (normalized.includes('jew')) return '💍';
+  if (normalized.includes('med')) return '🏺';
+  if (normalized.includes('near')) return '🏛️';
+  return '🏛️';
+}
+
+function renderExploreView(app, params = new URLSearchParams()) {
   app.innerHTML = '';
 
   const section = document.createElement('section');
@@ -151,12 +169,12 @@ function renderExploreView(app) {
   controls.className = 'filter-panel';
 
   const filters = {
-    q: '',
-    department: '',
-    yearFrom: '',
-    yearTo: '',
-    isHighlight: false,
-    hasImages: false,
+    q: params.get('q') || '',
+    department: params.get('departmentId') || '',
+    yearFrom: params.get('dateBegin') || '',
+    yearTo: params.get('dateEnd') || '',
+    isHighlight: params.get('isHighlight') === 'true',
+    hasImages: params.get('hasImages') === 'true',
     page: 1,
   };
 
@@ -296,7 +314,23 @@ function renderExploreView(app) {
   clearButton.addEventListener('click', resetForm);
 
   fetchJson(`${API_BASE}/departments`)
-    .then((data) => populateDepartments(departmentSelect, data.departments || []))
+    .then((data) => {
+      populateDepartments(departmentSelect, data.departments || []);
+      if (filters.department) {
+        departmentSelect.value = filters.department;
+      }
+      if (filters.q) {
+        searchInput.value = filters.q;
+      }
+      if (filters.yearFrom) {
+        yearFromInput.value = filters.yearFrom;
+      }
+      if (filters.yearTo) {
+        yearToInput.value = filters.yearTo;
+      }
+      highlightCheckbox.checked = filters.isHighlight;
+      imageCheckbox.checked = filters.hasImages;
+    })
     .catch(() => {
       const message = document.createElement('p');
       message.className = 'note';
@@ -691,19 +725,32 @@ function renderDepartmentsView(app) {
   fetchJson(`${API_BASE}/departments`)
     .then((data) => {
       app.innerHTML = '';
+
+      const section = document.createElement('section');
+      section.className = 'panel';
+      const title = document.createElement('h2');
+      title.textContent = 'Departamentos';
+      const intro = document.createElement('p');
+      intro.textContent = 'Explora las áreas curatoriales del museo y filtra la colección por cada una de ellas.';
+      section.append(title, intro);
+
       const grid = document.createElement('div');
       grid.className = 'grid';
 
       (data.departments || []).forEach((department) => {
+        const icon = getDepartmentIcon(department.displayName || '');
         const card = createCard({
-          title: department.displayName || 'Departamento',
+          title: `${icon} ${department.displayName || 'Departamento'}`,
+          subtitle: `ID ${department.departmentId || '—'}`,
+          meta: 'Explora obras de este departamento',
           actionLabel: 'Ver obras',
-          onAction: () => navigateTo('#explore'),
+          onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
         });
         grid.appendChild(card);
       });
 
-      app.appendChild(grid);
+      section.appendChild(grid);
+      app.appendChild(section);
     })
     .catch(() => {
       app.innerHTML = '';
