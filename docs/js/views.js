@@ -138,14 +138,7 @@ function saveCompareState(state) {
       A: state.selectedA ? { objectID: state.selectedA.objectID } : null,
       B: state.selectedB ? { objectID: state.selectedB.objectID } : null,
     };
-    const raw = JSON.stringify(payload);
-    window.sessionStorage.setItem('methub-compare', raw);
-    // also persist across sessions
-    try {
-      window.localStorage.setItem('methub-compare-persistent', raw);
-    } catch {
-      // ignore localStorage write errors (e.g., private mode)
-    }
+    window.sessionStorage.setItem('methub-compare', JSON.stringify(payload));
   } catch {
     // ignore
   }
@@ -153,14 +146,7 @@ function saveCompareState(state) {
 
 function loadCompareState() {
   try {
-    let raw = window.sessionStorage.getItem('methub-compare');
-    if (!raw) {
-      try {
-        raw = window.localStorage.getItem('methub-compare-persistent');
-      } catch {
-        raw = null;
-      }
-    }
+    const raw = window.sessionStorage.getItem('methub-compare');
     return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
@@ -665,6 +651,10 @@ function populateDepartments(select, departments) {
 
 function loadExploreResults(app, filters, elements) {
   const { results, aggregates, pagination } = elements;
+  let { resultsSummary } = elements;
+  if (!resultsSummary && results && results.parentElement) {
+    resultsSummary = results.parentElement.querySelector('.results-summary');
+  }
 
   results.innerHTML = '';
   results.appendChild(createState('Cargando resultados...'));
