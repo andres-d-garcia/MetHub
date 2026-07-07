@@ -1,4 +1,4 @@
-import { API_BASE, fetchJson } from './api.js';
+import { metApi } from './api.js';
 import { createCard, createState, getImageFallbackSrc } from './components.js';
 import { navigateTo } from './router.js';
 
@@ -129,7 +129,7 @@ function getFallbackObjectIdsByQuery(query = '') {
 
 function resolveObjectDetails(ids) {
   const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
-  return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
+  return Promise.allSettled(safeIds.map((id) => metApi.getObjectById(id).catch(() => getFallbackObjectById(id))));
 }
 
 function saveCompareState(state) {
@@ -225,9 +225,9 @@ function renderHomeView(app) {
   app.appendChild(createState('Cargando obras destacadas...'));
 
   Promise.allSettled([
-    fetchJson(`${API_BASE}/departments`),
-    fetchJson(`${API_BASE}/search?isHighlight=true&hasImages=true`),
-    fetchJson(`${API_BASE}/search`),
+    metApi.getDepartments(),
+    metApi.searchObjects({ isHighlight: true, hasImages: true }),
+    metApi.searchObjects(),
   ])
     .then(([departmentsResult, searchResult, totalCollectionResult]) => {
       if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
@@ -235,7 +235,7 @@ function renderHomeView(app) {
         return;
       }
 
-      const departments = departmentsResult.value?.departments || [];
+      const departments = departmentsResult.value || [];
       const objectIds = (searchResult.value?.objectIDs || []).slice(0, 8);
       const totalCollectionWorks = totalCollectionResult.status === 'fulfilled' ? (totalCollectionResult.value?.total || 0) : 0;
 
@@ -252,7 +252,11 @@ function renderHomeView(app) {
         return;
       }
 
-      return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
+      return metApi.getObjectsByIds(objectIds).then((objects) => {
+        const results = objectIds.map(id => {
+            const found = objects.find(o => o.objectID === id);
+            return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
+        });
         renderHomeContent(app, departments.length, objectIds.length, results, departments, totalCollectionWorks);
       });
     })
@@ -459,7 +463,7 @@ async function getDepartmentPreviewImage(departmentId) {
   }
 
   try {
-    const searchResult = await fetchJson(`${API_BASE}/search?q=${encodeURIComponent('*')}&departmentId=${departmentId}&hasImages=true`);
+    const searchResult = await metApi.searchObjects({ q: '*', departmentId, hasImages: true });
     const ids = Array.isArray(searchResult.objectIDs) ? searchResult.objectIDs : [];
     if (!ids.length) {
       return null;
@@ -467,7 +471,7 @@ async function getDepartmentPreviewImage(departmentId) {
 
     const candidateIds = ids.slice(0, Math.min(ids.length, 8));
     const randomId = candidateIds[Math.floor(Math.random() * candidateIds.length)];
-    const item = await fetchJson(`${API_BASE}/objects/${randomId}`);
+    const item = await metApi.getObjectById(randomId);
     return item?.primaryImageSmall || item?.primaryImage || null;
   } catch {
     return null;
@@ -667,9 +671,9 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
   clearButton.addEventListener('click', resetForm);
 
-  fetchJson(`${API_BASE}/departments`)
+  metApi.getDepartments()
     .then((data) => {
-      populateDepartments(departmentSelect, data.departments || []);
+      populateDepartments(departmentSelect, data || []);
       if (filters.department) {
         departmentSelect.value = filters.department;
       }
@@ -720,29 +724,16 @@ function loadExploreResults(app, filters, elements) {
   results.innerHTML = '';
   results.appendChild(createState('Cargando resultados...'));
 
-  const params = new URLSearchParams();
-  if (filters.q) {
-    params.set('q', filters.q);
-  }
-  if (filters.department) {
-    params.set('departmentId', filters.department);
-  }
-  if (filters.yearFrom) {
-    params.set('dateBegin', filters.yearFrom);
-  }
-  if (filters.yearTo) {
-    params.set('dateEnd', filters.yearTo);
-  }
-  if (filters.isHighlight) {
-    params.set('isHighlight', 'true');
-  }
-  if (filters.hasImages) {
-    params.set('hasImages', 'true');
-  }
-
   const startIndex = (filters.page - 1) * PAGE_SIZE;
 
-  fetchJson(`${API_BASE}/search?${params.toString()}`)
+  metApi.searchObjects({
+      q: filters.q,
+      departmentId: filters.department,
+      dateBegin: filters.yearFrom,
+      dateEnd: filters.yearTo,
+      isHighlight: filters.isHighlight,
+      hasImages: filters.hasImages,
+    })
     .then((data) => {
       const objectIds = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.objectIDs : getFallbackObjectIdsByQuery(filters.q);
       const total = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.total || objectIds.length : objectIds.length;
@@ -994,7 +985,7 @@ function renderDetailView(app, id) {
     return;
   }
 
-  fetchJson(`${API_BASE}/objects/${id}`)
+  metApi.getObjectById(id)
     .then((item) => {
       saveObjectToCache(item);
       saveRecentItem(item);
@@ -1159,7 +1150,7 @@ function renderDepartmentsView(app) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando departamentos...'));
 
-  fetchJson(`${API_BASE}/departments`)
+  metApi.getDepartments()
     .then((data) => {
       app.innerHTML = '';
 
@@ -1174,7 +1165,7 @@ function renderDepartmentsView(app) {
       const grid = document.createElement('div');
       grid.className = 'grid';
 
-      const departmentPromises = (data.departments || []).map(async (department) => {
+      const departmentPromises = (data || []).map(async (department) => {
         const icon = getDepartmentIcon(department.displayName || '');
         const card = createCard({
           title: `${icon} ${department.displayName || 'Departamento'}`,
@@ -1205,8 +1196,7 @@ function renderArtistView(app, name, currentPage = 1) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando obras del artista...'));
 
-  const encodedName = encodeURIComponent(name || '');
-  fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
+  metApi.searchObjects({ q: name, artistOrCulture: true })
     .then((data) => {
       const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs : [];
       const total = data.total || objectIds.length;
@@ -1240,7 +1230,11 @@ function renderArtistView(app, name, currentPage = 1) {
         return;
       }
 
-      return Promise.allSettled(pageIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
+      return metApi.getObjectsByIds(pageIds).then((objects) => {
+        const results = pageIds.map(id => {
+            const found = objects.find(o => o.objectID === id);
+            return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
+        });
         const grid = document.createElement('div');
         grid.className = 'grid';
 
@@ -1327,7 +1321,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     const saved = loadCompareState();
     if (selectedAId) {
       try {
-        const item = await fetchJson(`${API_BASE}/objects/${selectedAId}`);
+        const item = await metApi.getObjectById(selectedAId);
         if (item) {
           const sel = panelA.querySelector('.compare-selected');
           sel.innerHTML = '';
@@ -1350,7 +1344,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     if (saved) {
       if (!state.selectedA && saved.A && saved.A.objectID) {
         try {
-          const item = await fetchJson(`${API_BASE}/objects/${saved.A.objectID}`);
+          const item = await metApi.getObjectById(saved.A.objectID);
           if (item) {
             const sel = panelA.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1371,7 +1365,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
       }
       if (saved.B && saved.B.objectID) {
         try {
-          const item = await fetchJson(`${API_BASE}/objects/${saved.B.objectID}`);
+          const item = await metApi.getObjectById(saved.B.objectID);
           if (item) {
             const sel = panelB.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1538,7 +1532,7 @@ function createComparePanel(title, state, panelKey) {
     results.appendChild(createState('Buscando obras...'));
 
     debounceTimer = window.setTimeout(() => {
-      fetchJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
+      metApi.searchObjects({ q: value, hasImages: true })
         .then((data) => {
           const ids = (data.objectIDs || []).slice(0, 6);
           if (!ids.length) {
@@ -1547,7 +1541,12 @@ function createComparePanel(title, state, panelKey) {
             return;
           }
 
-          return Promise.allSettled(ids.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((resolved) => {
+          return metApi.getObjectsByIds(ids).then((objects) => {
+            const resolved = ids.map(id => {
+                const found = objects.find(o => o.objectID === id);
+                return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
+            });
+
             results.innerHTML = '';
             resolved.forEach((result) => {
               if (result.status === 'fulfilled' && result.value) {

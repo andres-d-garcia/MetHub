@@ -77,14 +77,13 @@ export class MetApiService {
   }
 
   async getObjectById(id) {
-    const response = await fetch(`${this.baseUrl}/objects/${id}`);
-
-    if (!response.ok) {
-      if (response.status === 404) return null;
-      throw new Error(`Error ${response.status} al consultar la obra ${id}`);
+    try {
+      return await this.request(`/objects/${id}`);
+    } catch (error) {
+      if (error.status === 404) return null;
+      // Re-throw other errors
+      throw error;
     }
-
-    return await response.json();
   }
 
   async getObjectsByIds(objectIds = []) {
