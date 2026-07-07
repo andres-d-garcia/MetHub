@@ -1,4 +1,4 @@
-import { metApi } from './api.js';
+import { API_BASE, fetchJson } from './api.js';
 import { createCard, createState, getImageFallbackSrc } from './components.js';
 import { navigateTo } from './router.js';
 
@@ -129,7 +129,7 @@ function getFallbackObjectIdsByQuery(query = '') {
 
 function resolveObjectDetails(ids) {
   const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
-  return Promise.allSettled(safeIds.map((id) => metApi.getObjectById(id).catch(() => getFallbackObjectById(id))));
+  return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
 }
 
 function saveCompareState(state) {
@@ -225,9 +225,9 @@ function renderHomeView(app) {
   app.appendChild(createState('Cargando obras destacadas...'));
 
   Promise.allSettled([
-    metApi.getDepartments(),
-    metApi.searchObjects({ isHighlight: true, hasImages: true }),
-    metApi.searchObjects(),
+    fetchJson(`${API_BASE}/departments`),
+    fetchJson(`${API_BASE}/search?isHighlight=true&hasImages=true`),
+    fetchJson(`${API_BASE}/search`),
   ])
     .then(([departmentsResult, searchResult, totalCollectionResult]) => {
       if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
@@ -235,7 +235,7 @@ function renderHomeView(app) {
         return;
       }
 
-      const departments = departmentsResult.value || [];
+      const departments = departmentsResult.value?.departments || [];
       const objectIds = (searchResult.value?.objectIDs || []).slice(0, 8);
       const totalCollectionWorks = totalCollectionResult.status === 'fulfilled' ? (totalCollectionResult.value?.total || 0) : 0;
 
@@ -252,11 +252,7 @@ function renderHomeView(app) {
         return;
       }
 
-      return metApi.getObjectsByIds(objectIds).then((objects) => {
-        const results = objectIds.map(id => {
-            const found = objects.find(o => o.objectID === id);
-            return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
-        });
+      return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
         renderHomeContent(app, departments.length, objectIds.length, results, departments, totalCollectionWorks);
       });
     })
@@ -403,11 +399,6 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     recentSection.appendChild(recentGrid);
     app.appendChild(recentSection);
   }
-
-  const gallerySection = document.createElement('section');
-  gallerySection.className = 'gallery-section';
-  const galleryTitle = document.createElement('h2');
-  galleryTitle.textContent = 'Obras destacadas';
   gallerySection.appendChild(galleryTitle);
 
   const grid = document.createElement('div');
@@ -463,7 +454,7 @@ async function getDepartmentPreviewImage(departmentId) {
   }
 
   try {
-    const searchResult = await metApi.searchObjects({ q: '*', departmentId, hasImages: true });
+    const searchResult = await fetchJson(`${API_BASE}/search?q=${encodeURIComponent('*')}&departmentId=${departmentId}&hasImages=true`);
     const ids = Array.isArray(searchResult.objectIDs) ? searchResult.objectIDs : [];
     if (!ids.length) {
       return null;
@@ -471,7 +462,7 @@ async function getDepartmentPreviewImage(departmentId) {
 
     const candidateIds = ids.slice(0, Math.min(ids.length, 8));
     const randomId = candidateIds[Math.floor(Math.random() * candidateIds.length)];
-    const item = await metApi.getObjectById(randomId);
+    const item = await fetchJson(`${API_BASE}/objects/${randomId}`);
     return item?.primaryImageSmall || item?.primaryImage || null;
   } catch {
     return null;
@@ -527,7 +518,28 @@ function renderExploreView(app, params = new URLSearchParams()) {
   const yearToInput = document.createElement('input');
   yearToInput.type = 'number';
   yearToInput.placeholder = 'Hasta';
-  yearField.append(yearLabel, yearFromInput, yearToInput);
+
+  // Add dual-range slider supporting negative years up to current year
+  const currentYear = new Date().getFullYear();
+  const rangeWrapper = document.createElement('div');
+  rangeWrapper.className = 'year-range-wrapper';
+  const rangeFrom = document.createElement('input');
+  rangeFrom.type = 'range';
+  rangeFrom.className = 'year-range';
+  rangeFrom.min = -2000;
+  rangeFrom.max = currentYear;
+  rangeFrom.step = 1;
+
+  const rangeTo = document.createElement('input');
+  rangeTo.type = 'range';
+  rangeTo.className = 'year-range';
+  rangeTo.min = -2000;
+  rangeTo.max = currentYear;
+  rangeTo.step = 1;
+
+  rangeWrapper.append(rangeFrom, rangeTo);
+
+  yearField.append(yearLabel, yearFromInput, yearToInput, rangeWrapper);
 
   const checkboxGroup = document.createElement('div');
   checkboxGroup.className = 'checkbox-group';
@@ -634,6 +646,13 @@ function renderExploreView(app, params = new URLSearchParams()) {
     departmentSelect.value = '';
     yearFromInput.value = '';
     yearToInput.value = '';
+    // reset ranges to defaults
+    try {
+      rangeFrom.value = rangeFrom.min;
+      rangeTo.value = rangeTo.max;
+    } catch (e) {
+      // ignore if ranges not available
+    }
     highlightCheckbox.checked = false;
     imageCheckbox.checked = false;
     applyFilters(true);
@@ -659,6 +678,31 @@ function renderExploreView(app, params = new URLSearchParams()) {
     applyFilters(true);
   });
 
+  // Sync range -> number inputs and filters
+  rangeFrom.addEventListener('input', () => {
+    const v = Number(rangeFrom.value);
+    if (Number(rangeTo.value) < v) {
+      rangeTo.value = v;
+    }
+    yearFromInput.value = rangeFrom.value;
+    yearToInput.value = rangeTo.value;
+    filters.yearFrom = String(rangeFrom.value);
+    filters.yearTo = String(rangeTo.value);
+    applyFilters(true);
+  });
+
+  rangeTo.addEventListener('input', () => {
+    const v = Number(rangeTo.value);
+    if (Number(rangeFrom.value) > v) {
+      rangeFrom.value = v;
+    }
+    yearFromInput.value = rangeFrom.value;
+    yearToInput.value = rangeTo.value;
+    filters.yearFrom = String(rangeFrom.value);
+    filters.yearTo = String(rangeTo.value);
+    applyFilters(true);
+  });
+
   highlightCheckbox.addEventListener('change', () => {
     filters.isHighlight = highlightCheckbox.checked;
     applyFilters(true);
@@ -671,9 +715,9 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
   clearButton.addEventListener('click', resetForm);
 
-  metApi.getDepartments()
+  fetchJson(`${API_BASE}/departments`)
     .then((data) => {
-      populateDepartments(departmentSelect, data || []);
+      populateDepartments(departmentSelect, data.departments || []);
       if (filters.department) {
         departmentSelect.value = filters.department;
       }
@@ -682,9 +726,15 @@ function renderExploreView(app, params = new URLSearchParams()) {
       }
       if (filters.yearFrom) {
         yearFromInput.value = filters.yearFrom;
+        rangeFrom.value = filters.yearFrom;
+      } else {
+        rangeFrom.value = rangeFrom.min;
       }
       if (filters.yearTo) {
         yearToInput.value = filters.yearTo;
+        rangeTo.value = filters.yearTo;
+      } else {
+        rangeTo.value = rangeTo.max;
       }
       highlightCheckbox.checked = filters.isHighlight;
       imageCheckbox.checked = filters.hasImages;
@@ -724,16 +774,29 @@ function loadExploreResults(app, filters, elements) {
   results.innerHTML = '';
   results.appendChild(createState('Cargando resultados...'));
 
+  const params = new URLSearchParams();
+  if (filters.q) {
+    params.set('q', filters.q);
+  }
+  if (filters.department) {
+    params.set('departmentId', filters.department);
+  }
+  if (filters.yearFrom) {
+    params.set('dateBegin', filters.yearFrom);
+  }
+  if (filters.yearTo) {
+    params.set('dateEnd', filters.yearTo);
+  }
+  if (filters.isHighlight) {
+    params.set('isHighlight', 'true');
+  }
+  if (filters.hasImages) {
+    params.set('hasImages', 'true');
+  }
+
   const startIndex = (filters.page - 1) * PAGE_SIZE;
 
-  metApi.searchObjects({
-      q: filters.q,
-      departmentId: filters.department,
-      dateBegin: filters.yearFrom,
-      dateEnd: filters.yearTo,
-      isHighlight: filters.isHighlight,
-      hasImages: filters.hasImages,
-    })
+  fetchJson(`${API_BASE}/search?${params.toString()}`)
     .then((data) => {
       const objectIds = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.objectIDs : getFallbackObjectIdsByQuery(filters.q);
       const total = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.total || objectIds.length : objectIds.length;
@@ -985,7 +1048,7 @@ function renderDetailView(app, id) {
     return;
   }
 
-  metApi.getObjectById(id)
+  fetchJson(`${API_BASE}/objects/${id}`)
     .then((item) => {
       saveObjectToCache(item);
       saveRecentItem(item);
@@ -1150,7 +1213,7 @@ function renderDepartmentsView(app) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando departamentos...'));
 
-  metApi.getDepartments()
+  fetchJson(`${API_BASE}/departments`)
     .then((data) => {
       app.innerHTML = '';
 
@@ -1165,7 +1228,7 @@ function renderDepartmentsView(app) {
       const grid = document.createElement('div');
       grid.className = 'grid';
 
-      const departmentPromises = (data || []).map(async (department) => {
+      const departmentPromises = (data.departments || []).map(async (department) => {
         const icon = getDepartmentIcon(department.displayName || '');
         const card = createCard({
           title: `${icon} ${department.displayName || 'Departamento'}`,
@@ -1196,7 +1259,8 @@ function renderArtistView(app, name, currentPage = 1) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando obras del artista...'));
 
-  metApi.searchObjects({ q: name, artistOrCulture: true })
+  const encodedName = encodeURIComponent(name || '');
+  fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
     .then((data) => {
       const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs : [];
       const total = data.total || objectIds.length;
@@ -1230,11 +1294,7 @@ function renderArtistView(app, name, currentPage = 1) {
         return;
       }
 
-      return metApi.getObjectsByIds(pageIds).then((objects) => {
-        const results = pageIds.map(id => {
-            const found = objects.find(o => o.objectID === id);
-            return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
-        });
+      return Promise.allSettled(pageIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
         const grid = document.createElement('div');
         grid.className = 'grid';
 
@@ -1321,7 +1381,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     const saved = loadCompareState();
     if (selectedAId) {
       try {
-        const item = await metApi.getObjectById(selectedAId);
+        const item = await fetchJson(`${API_BASE}/objects/${selectedAId}`);
         if (item) {
           const sel = panelA.querySelector('.compare-selected');
           sel.innerHTML = '';
@@ -1344,7 +1404,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     if (saved) {
       if (!state.selectedA && saved.A && saved.A.objectID) {
         try {
-          const item = await metApi.getObjectById(saved.A.objectID);
+          const item = await fetchJson(`${API_BASE}/objects/${saved.A.objectID}`);
           if (item) {
             const sel = panelA.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1365,7 +1425,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
       }
       if (saved.B && saved.B.objectID) {
         try {
-          const item = await metApi.getObjectById(saved.B.objectID);
+          const item = await fetchJson(`${API_BASE}/objects/${saved.B.objectID}`);
           if (item) {
             const sel = panelB.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1532,7 +1592,7 @@ function createComparePanel(title, state, panelKey) {
     results.appendChild(createState('Buscando obras...'));
 
     debounceTimer = window.setTimeout(() => {
-      metApi.searchObjects({ q: value, hasImages: true })
+      fetchJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
         .then((data) => {
           const ids = (data.objectIDs || []).slice(0, 6);
           if (!ids.length) {
@@ -1541,12 +1601,7 @@ function createComparePanel(title, state, panelKey) {
             return;
           }
 
-          return metApi.getObjectsByIds(ids).then((objects) => {
-            const resolved = ids.map(id => {
-                const found = objects.find(o => o.objectID === id);
-                return found ? { status: 'fulfilled', value: found } : { status: 'rejected', reason: new Error(`Object ${id} not found`) };
-            });
-
+          return Promise.allSettled(ids.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((resolved) => {
             results.innerHTML = '';
             resolved.forEach((result) => {
               if (result.status === 'fulfilled' && result.value) {
