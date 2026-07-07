@@ -36,11 +36,12 @@ function renderRoute() {
 
   if (hash.startsWith('#artist/')) {
     const name = decodeURIComponent(hash.split('/')[1] || '');
-    renderArtistView(app, name);
+    const params = getHashParams().params;
+    renderArtistView(app, name, Number(params.get('page') || 1));
     return;
   }
 
-  const { route } = getHashParams();
+  const { route, params } = getHashParams();
   switch (route) {
     case '#explore':
       renderExploreView(app, getHashParams().params);
@@ -49,7 +50,7 @@ function renderRoute() {
       renderDepartmentsView(app);
       break;
     case '#compare':
-      renderCompareView(app);
+      renderCompareView(app, getHashParams().params);
       break;
     case '#home':
     default:

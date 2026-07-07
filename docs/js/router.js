@@ -1,12 +1,13 @@
 function getRoute() {
-  return window.location.hash || '#home';
+  const hash = window.location.hash || '#home';
+  return hash.split('?')[0] || '#home';
 }
 
 function getHashParams() {
   const hash = window.location.hash || '#home';
   const [routePart, queryPart = ''] = hash.split('?');
   const params = new URLSearchParams(queryPart);
-  return { route: routePart, params };
+  return { route: routePart || '#home', params };
 }
 
 function navigateTo(hash) {
@@ -14,10 +15,10 @@ function navigateTo(hash) {
 }
 
 function updateActiveNav(navLinks) {
-  const hash = getRoute();
+  const current = getRoute();
   navLinks.forEach((link) => {
-    const target = link.getAttribute('href');
-    link.classList.toggle('active', target === hash);
+    const target = link.getAttribute('href').split('?')[0];
+    link.classList.toggle('active', target === current);
   });
 }
 

@@ -413,6 +413,27 @@ function getDepartmentIcon(name) {
   return '🏛️';
 }
 
+async function getDepartmentPreviewImage(departmentId) {
+  if (!departmentId) {
+    return null;
+  }
+
+  try {
+    const searchResult = await fetchJson(`${API_BASE}/search?q=${encodeURIComponent('*')}&departmentId=${departmentId}&hasImages=true`);
+    const ids = Array.isArray(searchResult.objectIDs) ? searchResult.objectIDs : [];
+    if (!ids.length) {
+      return null;
+    }
+
+    const candidateIds = ids.slice(0, Math.min(ids.length, 8));
+    const randomId = candidateIds[Math.floor(Math.random() * candidateIds.length)];
+    const item = await fetchJson(`${API_BASE}/objects/${randomId}`);
+    return item?.primaryImageSmall || item?.primaryImage || null;
+  } catch {
+    return null;
+  }
+}
+
 function renderExploreView(app, params = new URLSearchParams()) {
   app.innerHTML = '';
 
@@ -849,6 +870,41 @@ function getCenturyLabel(value) {
   return `Siglo ${Math.floor(year / 100) + 1}`;
 }
 
+function getNumericYear(item) {
+  if (!item) {
+    return null;
+  }
+
+  const candidates = [item.objectEndDate, item.objectBeginDate, item.objectDate];
+  for (const value of candidates) {
+    if (value === null || value === undefined || value === '') {
+      continue;
+    }
+    const year = Number(value);
+    if (Number.isFinite(year)) {
+      return year;
+    }
+    const match = String(value).match(/(-?\d{1,4})/);
+    if (match) {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed)) {
+        return parsed;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getYearDifference(itemA, itemB) {
+  const yearA = getNumericYear(itemA);
+  const yearB = getNumericYear(itemB);
+  if (yearA === null || yearB === null) {
+    return null;
+  }
+  return Math.abs(yearA - yearB);
+}
+
 function renderPagination(pagination, filters, total) {
   pagination.innerHTML = '';
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
@@ -938,7 +994,7 @@ function renderDetailContent(app, item) {
   const compareButton = document.createElement('button');
   compareButton.className = 'secondary-btn';
   compareButton.textContent = 'Comparar';
-  compareButton.addEventListener('click', () => navigateTo('#compare'));
+  compareButton.addEventListener('click', () => navigateTo(`#compare?selectedA=${encodeURIComponent(item.objectID)}`));
   actions.appendChild(compareButton);
 
   const layout = document.createElement('div');
@@ -1041,7 +1097,19 @@ function renderDetailContent(app, item) {
 
   tagsSection.append(tagsTitle, tags);
 
-  infoColumn.append(title, artist, descriptionTitle, description, metaSection, tagsSection);
+  const externalSection = document.createElement('div');
+  externalSection.className = 'meta-section';
+  const externalTitle = document.createElement('h3');
+  externalTitle.textContent = 'Ver en el museo';
+  const externalLink = document.createElement('a');
+  externalLink.href = item.objectURL || '#';
+  externalLink.textContent = item.objectURL ? 'Abrir ficha oficial del Met' : 'No disponible';
+  externalLink.target = '_blank';
+  externalLink.rel = 'noopener noreferrer';
+  externalLink.className = 'external-link';
+  externalSection.append(externalTitle, externalLink);
+
+  infoColumn.append(title, artist, descriptionTitle, description, metaSection, tagsSection, externalSection);
   layout.append(imageColumn, infoColumn);
   section.append(actions, layout);
   app.appendChild(section);
@@ -1066,20 +1134,28 @@ function renderDepartmentsView(app) {
       const grid = document.createElement('div');
       grid.className = 'grid';
 
-      (data.departments || []).forEach((department) => {
+      const departmentPromises = (data.departments || []).map(async (department) => {
         const icon = getDepartmentIcon(department.displayName || '');
+        const preview = await getDepartmentPreviewImage(department.departmentId);
         const card = createCard({
           title: `${icon} ${department.displayName || 'Departamento'}`,
           subtitle: `ID ${department.departmentId || '—'}`,
           meta: 'Explora obras de este departamento',
+          imageSrc: preview || getImageFallbackSrc(department.displayName),
           actionLabel: 'Ver obras',
           onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
         });
         grid.appendChild(card);
       });
 
-      section.appendChild(grid);
-      app.appendChild(section);
+      Promise.all(departmentPromises)
+        .catch(() => {
+          // Ignorar fallos individuales y mostrar tarjetas con imágenes fallback.
+        })
+        .finally(() => {
+          section.appendChild(grid);
+          app.appendChild(section);
+        });
     })
     .catch(() => {
       app.innerHTML = '';
@@ -1087,41 +1163,46 @@ function renderDepartmentsView(app) {
     });
 }
 
-function renderArtistView(app, name) {
+function renderArtistView(app, name, currentPage = 1) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando obras del artista...'));
 
   const encodedName = encodeURIComponent(name || '');
   fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
     .then((data) => {
-      const objectIds = data.objectIDs || [];
-      const total = data.total || 0;
-      const firstIds = objectIds.slice(0, 12);
+      const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs : [];
+      const total = data.total || objectIds.length;
+      const pageSize = PAGE_SIZE;
+      const totalPages = Math.max(1, Math.ceil(total / pageSize));
+      const page = Math.min(Math.max(1, currentPage), totalPages);
+      const pageIds = objectIds.slice((page - 1) * pageSize, page * pageSize);
 
-      if (!firstIds.length) {
-        app.innerHTML = '';
-        const section = document.createElement('section');
-        section.className = 'panel';
-        const h2 = document.createElement('h2');
-        h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
-        const p = document.createElement('p');
-        p.textContent = 'No se encontraron obras asociadas a este artista.';
-        section.append(h2, p);
+      app.innerHTML = '';
+      const section = document.createElement('section');
+      section.className = 'panel';
+
+      const header = document.createElement('div');
+      header.className = 'artist-header';
+      const h2 = document.createElement('h2');
+      h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
+      const intro = document.createElement('p');
+      intro.textContent = `Se encontraron ${total} obras asociadas.`;
+      const backButton = document.createElement('button');
+      backButton.className = 'secondary-btn';
+      backButton.textContent = '← Volver';
+      backButton.addEventListener('click', () => window.history.back());
+      header.append(backButton, h2, intro);
+      section.append(header);
+
+      if (!pageIds.length) {
+        const empty = document.createElement('p');
+        empty.textContent = 'No se encontraron obras asociadas a este artista.';
+        section.appendChild(empty);
         app.appendChild(section);
         return;
       }
 
-      return Promise.allSettled(firstIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
-        app.innerHTML = '';
-        const section = document.createElement('section');
-        section.className = 'panel';
-
-        const h2 = document.createElement('h2');
-        h2.textContent = name ? `Obras de ${name}` : 'Obras del artista';
-        const intro = document.createElement('p');
-        intro.textContent = `Se encontraron ${total} obras asociadas.`;
-        section.append(h2, intro);
-
+      return Promise.allSettled(pageIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
         const grid = document.createElement('div');
         grid.className = 'grid';
 
@@ -1141,16 +1222,39 @@ function renderArtistView(app, name) {
         });
 
         section.appendChild(grid);
+
+        if (totalPages > 1) {
+          const pagination = document.createElement('div');
+          pagination.className = 'pagination';
+
+          const prev = document.createElement('button');
+          prev.textContent = 'Anterior';
+          prev.disabled = page <= 1;
+          prev.addEventListener('click', () => renderArtistView(app, name, page - 1));
+
+          const indicator = document.createElement('span');
+          indicator.className = 'page-indicator';
+          indicator.textContent = `Página ${page} de ${totalPages}`;
+
+          const next = document.createElement('button');
+          next.textContent = 'Siguiente';
+          next.disabled = page >= totalPages;
+          next.addEventListener('click', () => renderArtistView(app, name, page + 1));
+
+          pagination.append(prev, indicator, next);
+          section.appendChild(pagination);
+        }
+
         app.appendChild(section);
       });
     })
     .catch(() => {
       app.innerHTML = '';
-      app.appendChild(createState('No se pudieron cargar las obras del artista.', { onRetry: () => renderArtistView(app, name) }));
+      app.appendChild(createState('No se pudieron cargar las obras del artista.', { onRetry: () => renderArtistView(app, name, currentPage) }));
     });
 }
 
-function renderCompareView(app) {
+function renderCompareView(app, params = new URLSearchParams()) {
   app.innerHTML = '';
   const section = document.createElement('section');
   section.className = 'panel';
@@ -1169,6 +1273,8 @@ function renderCompareView(app) {
     selectedB: null,
   };
 
+  const selectedAId = params.get('selectedA');
+
   const panelA = createComparePanel('Obra A', state, 'A');
   const panelB = createComparePanel('Obra B', state, 'B');
 
@@ -1176,6 +1282,82 @@ function renderCompareView(app) {
   section.appendChild(compareLayout);
 
   const tableWrapper = document.createElement('div');
+  tableWrapper.className = 'comparison-table-wrapper';
+  section.appendChild(tableWrapper);
+
+  const initSelections = async () => {
+    const saved = loadCompareState();
+    if (selectedAId) {
+      try {
+        const item = await fetchJson(`${API_BASE}/objects/${selectedAId}`);
+        if (item) {
+          const sel = panelA.querySelector('.compare-selected');
+          sel.innerHTML = '';
+          const card = createCard({
+            title: item.title || 'Sin título',
+            subtitle: item.artistDisplayName || 'Artista desconocido',
+            meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+            imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+            actionLabel: 'Seleccionada',
+            onAction: () => {},
+          });
+          sel.appendChild(card);
+          state.selectedA = item;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (saved) {
+      if (!state.selectedA && saved.A && saved.A.objectID) {
+        try {
+          const item = await fetchJson(`${API_BASE}/objects/${saved.A.objectID}`);
+          if (item) {
+            const sel = panelA.querySelector('.compare-selected');
+            sel.innerHTML = '';
+            const card = createCard({
+              title: item.title || 'Sin título',
+              subtitle: item.artistDisplayName || 'Artista desconocido',
+              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+              actionLabel: 'Seleccionada',
+              onAction: () => {},
+            });
+            sel.appendChild(card);
+            state.selectedA = item;
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (saved.B && saved.B.objectID) {
+        try {
+          const item = await fetchJson(`${API_BASE}/objects/${saved.B.objectID}`);
+          if (item) {
+            const sel = panelB.querySelector('.compare-selected');
+            sel.innerHTML = '';
+            const card = createCard({
+              title: item.title || 'Sin título',
+              subtitle: item.artistDisplayName || 'Artista desconocido',
+              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
+              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
+              actionLabel: 'Seleccionada',
+              onAction: () => {},
+            });
+            sel.appendChild(card);
+            state.selectedB = item;
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    renderComparison();
+  };
+
+  initSelections();
   tableWrapper.className = 'comparison-table-wrapper';
   section.appendChild(tableWrapper);
 
@@ -1210,6 +1392,8 @@ function renderCompareView(app) {
       ['Técnica', state.selectedA.medium || '—', state.selectedB.medium || '—'],
       ['Clasificación', state.selectedA.classification || '—', state.selectedB.classification || '—'],
       ['Cultura', state.selectedA.culture || '—', state.selectedB.culture || '—'],
+      ['Obra destacada', state.selectedA.isHighlight ? 'Sí' : 'No', state.selectedB.isHighlight ? 'Sí' : 'No'],
+      ['Dominio público', state.selectedA.isPublicDomain ? 'Sí' : 'No', state.selectedB.isPublicDomain ? 'Sí' : 'No'],
     ];
 
     const tbody = document.createElement('tbody');
@@ -1244,6 +1428,14 @@ function renderCompareView(app) {
     tableWrapper.innerHTML = '';
     tableWrapper.appendChild(table);
 
+    const diffYears = getYearDifference(state.selectedA, state.selectedB);
+    if (diffYears !== null) {
+      const diffNote = document.createElement('p');
+      diffNote.className = 'compare-note';
+      diffNote.textContent = `Diferencia de años entre las obras: ${diffYears} años.`;
+      tableWrapper.appendChild(diffNote);
+    }
+
     const note = document.createElement('p');
     note.className = 'compare-note';
     note.textContent = 'Las celdas resaltadas indican diferencias entre las obras seleccionadas.';
@@ -1268,54 +1460,6 @@ function renderCompareView(app) {
   panelB.addEventListener('select-item', (event) => {
     applySelection(event.detail.panelKey, event.detail.item);
   });
-
-  // Restore saved compare selections if present
-  const saved = loadCompareState();
-  if (saved) {
-    if (saved.A && saved.A.objectID) {
-      fetchJson(`${API_BASE}/objects/${saved.A.objectID}`)
-        .then((item) => {
-          if (item) {
-            const sel = panelA.querySelector('.compare-selected');
-            sel.innerHTML = '';
-            const card = createCard({
-              title: item.title || 'Sin título',
-              subtitle: item.artistDisplayName || 'Artista desconocido',
-              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-              actionLabel: 'Seleccionada',
-              onAction: () => {},
-            });
-            sel.appendChild(card);
-            state.selectedA = item;
-            renderComparison();
-          }
-        })
-        .catch(() => {});
-    }
-
-    if (saved.B && saved.B.objectID) {
-      fetchJson(`${API_BASE}/objects/${saved.B.objectID}`)
-        .then((item) => {
-          if (item) {
-            const sel = panelB.querySelector('.compare-selected');
-            sel.innerHTML = '';
-            const card = createCard({
-              title: item.title || 'Sin título',
-              subtitle: item.artistDisplayName || 'Artista desconocido',
-              meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
-              imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-              actionLabel: 'Seleccionada',
-              onAction: () => {},
-            });
-            sel.appendChild(card);
-            state.selectedB = item;
-            renderComparison();
-          }
-        })
-        .catch(() => {});
-    }
-  }
 
   app.appendChild(section);
 }
