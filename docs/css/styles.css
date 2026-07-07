@@ -1,12 +1,12 @@
 :root {
-  --bg: #f5efe6;
-  --surface: #fffdf8;
-  --text: #222;
-  --muted: #666;
-  --accent: #8b3e2f;
-  --accent-soft: #f2e1d9;
-  --border: #ddd3c4;
-  --shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  --bg: #ffe5bf;
+  --surface: #fff9f1;
+  --text: #2b1d12;
+  --muted: #7a5c41;
+  --accent: #f62440;
+  --accent-soft: #fff0db;
+  --border: #f1c88d;
+  --shadow: 0 8px 24px rgba(246, 36, 64, 0.12);
 }
 
 * {
@@ -16,7 +16,7 @@
 body {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  background: linear-gradient(180deg, #f7efe6 0%, var(--bg) 100%);
+  background: linear-gradient(180deg, #fff7eb 0%, var(--bg) 100%);
   color: var(--text);
   line-height: 1.5;
 }
@@ -29,16 +29,16 @@ body {
   justify-content: space-between;
   align-items: center;
   padding: 1rem 1.5rem;
-  background: rgba(255, 253, 248, 0.95);
+  background: var(--accent);
   backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--border);
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.04);
+  border-bottom: 1px solid var(--accent);
+  box-shadow: 0 2px 12px rgba(246, 36, 64, 0.2);
 }
 
 .brand {
   font-size: 1.4rem;
   font-weight: 700;
-  color: var(--accent);
+  color: #fffaf3;
   text-decoration: none;
 }
 
@@ -49,12 +49,12 @@ body {
 
 .nav-links a {
   text-decoration: none;
-  color: var(--text);
+  color: #fffaf3;
   font-weight: 600;
 }
 
 .nav-links a.active {
-  color: var(--accent);
+  color: #ffe5bf;
 }
 
 .app-shell {
@@ -79,7 +79,7 @@ body {
 }
 
 .footer {
-  background: #fffdf8;
+  background: #fff9f1;
   border-top: 1px solid var(--border);
   padding: 1.25rem 1.5rem 2rem;
   text-align: center;
@@ -113,7 +113,7 @@ body {
 }
 
 .hero-actions .secondary-btn {
-  background: #fff;
+  background: #fffaf3;
   color: var(--accent);
   border: 1px solid var(--border);
 }
@@ -168,7 +168,7 @@ body {
 .state {
   padding: 1rem;
   border-radius: 12px;
-  background: #fff;
+  background: #fffaf3;
   border: 1px dashed var(--border);
   text-align: center;
 }
@@ -233,6 +233,27 @@ body {
 
 .gallery-section {
   margin-top: 1rem;
+}
+
+.chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.chip-btn {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--accent);
+  padding: 0.6rem 0.9rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.chip-btn:hover {
+  background: var(--accent-soft);
 }
 
 .aggregate-panel {
@@ -329,7 +350,7 @@ body {
 
 .meta-section,
 .tags-section {
-  background: #fff;
+  background: #fffaf3af3;
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.9rem;
@@ -433,16 +454,16 @@ body {
 }
 
 .comparison-table thead th {
-  background: #f7efe4;
+  background: #fff0db;
   font-weight: 700;
 }
 
 .diff-label {
-  background: #f7efe4;
+  background: #fff0db;
 }
 
 .diff-cell {
-  background: #fff3e8;
+  background: #ffe8ec;
   color: var(--accent);
   font-weight: 600;
 }

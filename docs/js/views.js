@@ -227,15 +227,17 @@ function renderHomeView(app) {
   Promise.allSettled([
     fetchJson(`${API_BASE}/departments`),
     fetchJson(`${API_BASE}/search?isHighlight=true&hasImages=true`),
+    fetchJson(`${API_BASE}/search`),
   ])
-    .then(([departmentsResult, searchResult]) => {
+    .then(([departmentsResult, searchResult, totalCollectionResult]) => {
       if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
-        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })));
+        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), [], 0);
         return;
       }
 
       const departments = departmentsResult.value?.departments || [];
       const objectIds = (searchResult.value?.objectIDs || []).slice(0, 8);
+      const totalCollectionWorks = totalCollectionResult.status === 'fulfilled' ? (totalCollectionResult.value?.total || 0) : 0;
 
       if (!objectIds.length) {
         app.innerHTML = '';
@@ -251,15 +253,15 @@ function renderHomeView(app) {
       }
 
       return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
-        renderHomeContent(app, departments.length, objectIds.length, results, departments);
+        renderHomeContent(app, departments.length, objectIds.length, results, departments, totalCollectionWorks);
       });
     })
     .catch(() => {
-      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })));
+      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), [], 0);
     });
 }
 
-function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = []) {
+function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = [], totalCollectionWorks = 0) {
   app.innerHTML = '';
 
   const hero = document.createElement('section');
@@ -300,12 +302,50 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   statsCard2.className = 'stat-card';
   statsCard2.innerHTML = `<strong>${totalHighlights}</strong><span>Obras destacadas</span>`;
 
+  const totalWorksFormatter = new Intl.NumberFormat('es-ES');
   const statsCard3 = document.createElement('div');
   statsCard3.className = 'stat-card';
-  statsCard3.innerHTML = '<strong>SPA</strong><span>Navegación sin recarga</span>';
+  statsCard3.innerHTML = `<strong>${totalCollectionWorks ? totalWorksFormatter.format(totalCollectionWorks) : '—'}</strong><span>Obras en el Met</span>`;
 
   statsSection.append(statsCard1, statsCard2, statsCard3);
   app.appendChild(statsSection);
+
+  const quickSearchSection = document.createElement('section');
+  quickSearchSection.className = 'gallery-section';
+  const quickSearchTitle = document.createElement('h2');
+  quickSearchTitle.textContent = 'Búsquedas rápidas';
+  quickSearchSection.appendChild(quickSearchTitle);
+
+  const quickSearchList = document.createElement('div');
+  quickSearchList.className = 'chip-list';
+
+  const quickSearches = [
+    { label: 'Van Gogh', query: 'van gogh' },
+    { label: 'Mona Lisa', query: 'mona lisa' },
+    { label: 'Hokusai', query: 'hokusai' },
+    { label: 'Arte moderno', departmentId: '21' },
+    { label: 'Pinturas', departmentId: '11' },
+  ];
+
+  quickSearches.forEach((item) => {
+    const button = document.createElement('button');
+    button.className = 'chip-btn';
+    button.textContent = item.label;
+    button.addEventListener('click', () => {
+      const params = new URLSearchParams();
+      if (item.query) {
+        params.set('q', item.query);
+      }
+      if (item.departmentId) {
+        params.set('departmentId', item.departmentId);
+      }
+      navigateTo(`#explore${params.toString() ? `?${params.toString()}` : ''}`);
+    });
+    quickSearchList.appendChild(button);
+  });
+
+  quickSearchSection.appendChild(quickSearchList);
+  app.appendChild(quickSearchSection);
 
   if (departments.length) {
     const departmentsSection = document.createElement('section');
@@ -321,11 +361,11 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
       const icon = getDepartmentIcon(department.displayName || '');
       const card = createCard({
         title: `${icon} ${department.displayName || 'Departamento'}`,
-        subtitle: `ID ${department.departmentId || '—'}`,
         meta: 'Explora obras de este departamento',
         actionLabel: 'Ver obras',
         onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
       });
+      card.querySelector('img')?.remove();
       departmentsGrid.appendChild(card);
     });
 
@@ -1136,15 +1176,13 @@ function renderDepartmentsView(app) {
 
       const departmentPromises = (data.departments || []).map(async (department) => {
         const icon = getDepartmentIcon(department.displayName || '');
-        const preview = await getDepartmentPreviewImage(department.departmentId);
         const card = createCard({
           title: `${icon} ${department.displayName || 'Departamento'}`,
-          subtitle: `ID ${department.departmentId || '—'}`,
           meta: 'Explora obras de este departamento',
-          imageSrc: preview || getImageFallbackSrc(department.displayName),
           actionLabel: 'Ver obras',
           onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
         });
+        card.querySelector('img')?.remove();
         grid.appendChild(card);
       });
 
