@@ -1,10 +1,10 @@
-import { API_BASE, fetchJson } from './api.js';
+import { API_BASE, fetchJson as obtenerJson } from './api.js';
 import { createCard, createState, getImageFallbackSrc } from './components.js';
 import { navigateTo } from './router.js';
 
-const PAGE_SIZE = 6;
-const MAX_PARALLEL_REQUESTS = 4;
-const FALLBACK_OBJECTS = {
+const TAMANO_PAGINA = 6;
+const MAX_PETICIONES_PARALELAS = 4;
+const OBJETOS_RESPALDO = {
   436535: {
     objectID: 436535,
     title: 'The Starry Night',
@@ -49,7 +49,7 @@ const FALLBACK_OBJECTS = {
   },
 };
 
-const FALLBACK_HIGHLIGHTS = [
+const DESTACADOS_RESPALDO = [
   {
     objectID: 436535,
     title: 'The Starry Night',
@@ -76,16 +76,16 @@ const FALLBACK_HIGHLIGHTS = [
   },
 ];
 
-function getFallbackObjectById(id) {
+function obtenerObjetoRespaldoPorId(id) {
   if (!id) {
     return null;
   }
 
-  return FALLBACK_OBJECTS[String(id)] || null;
+  return OBJETOS_RESPALDO[String(id)] || null;
 }
 
-function getFallbackObjectIdsByQuery(query = '') {
-  const normalize = (s = '') =>
+function obtenerIdsObjetoRespaldoPorQuery(consulta = '') {
+  const normalizar = (s = '') =>
     String(s)
       .toLowerCase()
       .normalize('NFD')
@@ -94,14 +94,14 @@ function getFallbackObjectIdsByQuery(query = '') {
       .replace(/\s+/g, ' ')
       .trim();
 
-  const q = normalize(query || '');
-  if (!q) return Object.keys(FALLBACK_OBJECTS).map((k) => Number(k));
+  const q = normalizar(consulta || '');
+  if (!q) return Object.keys(OBJETOS_RESPALDO).map((k) => Number(k));
 
-  const tokens = q.split(' ').filter(Boolean);
+  const terminos = q.split(' ').filter(Boolean);
 
-  // Build a simple local index from FALLBACK_OBJECTS
-  const index = Object.values(FALLBACK_OBJECTS).map((obj) => {
-    const text = normalize([obj.title, obj.artistDisplayName, obj.department].join(' '));
+  // Build a simple local index from OBJETOS_RESPALDO
+  const indice = Object.values(OBJETOS_RESPALDO).map((obj) => {
+    const text = normalizar([obj.title, obj.artistDisplayName, obj.department].join(' '));
     return { id: obj.objectID, text };
   });
 
@@ -109,7 +109,7 @@ function getFallbackObjectIdsByQuery(query = '') {
   const scored = index
     .map((entry) => {
       let score = 0;
-      for (const t of tokens) {
+      for (const t of terminos) {
         if (entry.text.includes(t)) score += 2;
         else if (t.length > 2 && entry.text.split(' ').some((w) => w.startsWith(t))) score += 1;
       }
@@ -125,23 +125,23 @@ function getFallbackObjectIdsByQuery(query = '') {
   if (q.includes('mona') || q.includes('lisa') || q.includes('da vinci') || q.includes('leonardo')) return [437980];
   if (q.includes('wave') || q.includes('hokusai') || q.includes('kanagawa') || q.includes('japan')) return [459055];
 
-  return Object.keys(FALLBACK_OBJECTS).map((k) => Number(k));
+  return Object.keys(OBJETOS_RESPALDO).map((k) => Number(k));
 }
 
-async function resolveObjectDetails(ids) {
-  const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
+async function resolverDetallesObjeto(ids) {
+  const idsSeguros = Array.isArray(ids) ? ids.filter(Boolean) : [];
   const results = [];
 
-  for (let index = 0; index < safeIds.length; index += MAX_PARALLEL_REQUESTS) {
-    const chunk = safeIds.slice(index, index + MAX_PARALLEL_REQUESTS);
-    const chunkResults = await Promise.allSettled(chunk.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
-    results.push(...chunkResults);
+  for (let i = 0; i < idsSeguros.length; i += MAX_PETICIONES_PARALELAS) {
+    const fragmento = idsSeguros.slice(i, i + MAX_PETICIONES_PARALELAS);
+    const resultadosFragmento = await Promise.allSettled(fragmento.map((id) => obtenerJson(`${API_BASE}/objects/${id}`).catch(() => obtenerObjetoRespaldoPorId(id))));
+    results.push(...resultadosFragmento);
   }
 
   return results;
 }
 
-function saveCompareState(state) {
+function guardarEstadoComparador(state) {
   try {
     const payload = {
       A: state.selectedA ? { objectID: state.selectedA.objectID } : null,
@@ -153,7 +153,7 @@ function saveCompareState(state) {
   }
 }
 
-function loadCompareState() {
+function cargarEstadoComparador() {
   try {
     const raw = window.sessionStorage.getItem('methub-compare');
     return raw ? JSON.parse(raw) : null;
@@ -162,7 +162,7 @@ function loadCompareState() {
   }
 }
 
-function saveObjectToCache(item) {
+function guardarObjetoEnCache(item) {
   if (!item?.objectID) {
     return;
   }
@@ -174,7 +174,7 @@ function saveObjectToCache(item) {
   }
 }
 
-function getObjectFromCache(id) {
+function obtenerObjetoDeCache(id) {
   if (!id) {
     return null;
   }
@@ -187,10 +187,10 @@ function getObjectFromCache(id) {
   }
 }
 
-function openDetail(item) {
+function abrirDetalle(item) {
   if (item?.objectID) {
-    saveObjectToCache(item);
-    saveRecentItem(item);
+    guardarObjetoEnCache(item);
+    guardarItemReciente(item);
     navigateTo(`#detail/${item.objectID}`);
     return;
   }
@@ -198,10 +198,10 @@ function openDetail(item) {
   navigateTo('#home');
 }
 
-function readRecentItems() {
+function leerItemsRecientes() {
   try {
-    const raw = window.localStorage.getItem('methub-recent-items');
-    return raw ? JSON.parse(raw) : [];
+    const datosCrudos = window.localStorage.getItem('methub-recent-items');
+    return datosCrudos ? JSON.parse(datosCrudos) : [];
   } catch {
     return [];
   }
@@ -212,8 +212,8 @@ function saveRecentItem(item) {
     return;
   }
 
-  const current = readRecentItems().filter((entry) => String(entry.objectID) !== String(item.objectID));
-  current.unshift({
+  const actuales = leerItemsRecientes().filter((entry) => String(entry.objectID) !== String(item.objectID));
+  actuales.unshift({
     objectID: item.objectID,
     title: item.title || 'Sin título',
     artistDisplayName: item.artistDisplayName || 'Artista desconocido',
@@ -223,7 +223,7 @@ function saveRecentItem(item) {
   });
 
   try {
-    window.localStorage.setItem('methub-recent-items', JSON.stringify(current.slice(0, 4)));
+    window.localStorage.setItem('methub-recent-items', JSON.stringify(actuales.slice(0, 4)));
   } catch {
     // ignore storage errors
   }
@@ -234,21 +234,20 @@ function renderHomeView(app) {
   app.appendChild(createState('Cargando obras destacadas...'));
 
   Promise.allSettled([
-    fetchJson(`${API_BASE}/departments`),
-    fetchJson(`${API_BASE}/search?isHighlight=true&hasImages=true`),
-    fetchJson(`${API_BASE}/search`),
+    obtenerJson(`${API_BASE}/departments`),
+    obtenerJson(`${API_BASE}/search?isHighlight=true&hasImages=true`),
+    obtenerJson(`${API_BASE}/search`),
   ])
-    .then(([departmentsResult, searchResult, totalCollectionResult]) => {
-      if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
-        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), []);
+    .then(([resultadoDepartamentos, resultadoBusqueda, resultadoTotalColeccion]) => {
+      if (resultadoDepartamentos.status === 'rejected' || resultadoBusqueda.status === 'rejected') {
+        renderizarContenidoHome(app, 19, DESTACADOS_RESPALDO.length, DESTACADOS_RESPALDO.map((item) => ({ status: 'fulfilled', value: item })), []);
         return;
       }
 
-      const departments = departmentsResult.value?.departments || [];
-      const objectIds = (searchResult.value?.objectIDs || []).slice(0, 4);
-      const totalCollectionWorks = totalCollectionResult.status === 'fulfilled' ? (totalCollectionResult.value?.total || 0) : 0;
+      const departamentos = resultadoDepartamentos.value?.departments || [];
+      const idsObjetos = (resultadoBusqueda.value?.objectIDs || []).slice(0, 4);
 
-      if (!objectIds.length) {
+      if (!idsObjetos.length) {
         app.innerHTML = '';
         const section = document.createElement('section');
         section.className = 'hero';
@@ -261,16 +260,16 @@ function renderHomeView(app) {
         return;
       }
 
-      return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
-        renderHomeContent(app, departments.length, objectIds.length, results, departments);
+      return Promise.allSettled(idsObjetos.map((id) => obtenerJson(`${API_BASE}/objects/${id}`))).then((results) => {
+        renderizarContenidoHome(app, departamentos.length, idsObjetos.length, results, departamentos);
       });
     })
     .catch(() => {
-      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), []);
+      renderizarContenidoHome(app, 19, DESTACADOS_RESPALDO.length, DESTACADOS_RESPALDO.map((item) => ({ status: 'fulfilled', value: item })), []);
     });
 }
 
-function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = []) {
+function renderizarContenidoHome(app, totalDepartamentos, totalDestacados, resultadosObjetos, departamentos = []) {
   app.innerHTML = '';
 
   const hero = document.createElement('section');
@@ -286,47 +285,47 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   const actions = document.createElement('div');
   actions.className = 'hero-actions';
 
-  const exploreBtn = document.createElement('button');
-  exploreBtn.className = 'secondary-btn';
-  exploreBtn.textContent = 'Explorar obras';
-  exploreBtn.addEventListener('click', () => navigateTo('#explore'));
+  const btnExplorar = document.createElement('button');
+  btnExplorar.className = 'secondary-btn';
+  btnExplorar.textContent = 'Explorar obras';
+  btnExplorar.addEventListener('click', () => navigateTo('#explore'));
 
-  const departmentsBtn = document.createElement('button');
-  departmentsBtn.className = 'secondary-btn';
-  departmentsBtn.textContent = 'Ver departamentos';
-  departmentsBtn.addEventListener('click', () => navigateTo('#departments'));
+  const btnDepartamentos = document.createElement('button');
+  btnDepartamentos.className = 'secondary-btn';
+  btnDepartamentos.textContent = 'Ver departamentos';
+  btnDepartamentos.addEventListener('click', () => navigateTo('#departments'));
 
-  actions.append(exploreBtn, departmentsBtn);
+  actions.append(btnExplorar, btnDepartamentos);
   hero.append(title, intro, note, actions);
   app.appendChild(hero);
 
-  const statsSection = document.createElement('section');
-  statsSection.className = 'stats-section';
+  const seccionEstadisticas = document.createElement('section');
+  seccionEstadisticas.className = 'stats-section';
 
-  const statsCard1 = document.createElement('div');
-  statsCard1.className = 'stat-card';
-  statsCard1.innerHTML = `<strong>${totalDepartments}</strong><span>Departamentos</span>`;
+  const tarjetaEstadistica1 = document.createElement('div');
+  tarjetaEstadistica1.className = 'stat-card';
+  tarjetaEstadistica1.innerHTML = `<strong>${totalDepartamentos}</strong><span>Departamentos</span>`;
 
-  const validItems = objectResults.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
+  const itemsValidos = resultadosObjetos.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
 
-  const artistCounts = new Map();
-  validItems.forEach((item) => {
+  const conteoArtistas = new Map();
+  itemsValidos.forEach((item) => {
     const artist = item.artistDisplayName || 'Artista desconocido';
-    artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
+    conteoArtistas.set(artist, (conteoArtistas.get(artist) || 0) + 1);
   });
 
-  let frequentArtist = '—';
-  let maxCount = 0;
-  artistCounts.forEach((count, artist) => {
-    if (count > maxCount) {
-      frequentArtist = artist;
-      maxCount = count;
+  let artistaFrecuente = '—';
+  let conteoMaximo = 0;
+  conteoArtistas.forEach((count, artist) => {
+    if (count > conteoMaximo) {
+      artistaFrecuente = artist;
+      conteoMaximo = count;
     }
   });
 
-  const statsCard2 = document.createElement('div');
-  statsCard2.className = 'stat-card';
-  statsCard2.innerHTML = `<strong>${frequentArtist}</strong><span>Artista más frecuente (destacadas)</span>`;
+  const tarjetaEstadistica2 = document.createElement('div');
+  tarjetaEstadistica2.className = 'stat-card';
+  tarjetaEstadistica2.innerHTML = `<strong>${artistaFrecuente}</strong><span>Artista más frecuente (destacadas)</span>`;
 
   let oldestWork = null;
   if (validItems.length > 0) {
@@ -338,12 +337,12 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     }, null);
   }
 
-  const statsCard3 = document.createElement('div');
-  statsCard3.className = 'stat-card';
-  statsCard3.innerHTML = `<strong>${oldestWork ? oldestWork.objectDate : '—'}</strong><span>Obra más antigua (destacadas)</span>`;
+  const tarjetaEstadistica3 = document.createElement('div');
+  tarjetaEstadistica3.className = 'stat-card';
+  tarjetaEstadistica3.innerHTML = `<strong>${oldestWork ? oldestWork.objectDate : '—'}</strong><span>Obra más antigua (destacadas)</span>`;
   
-  statsSection.append(statsCard1, statsCard2, statsCard3);
-  app.appendChild(statsSection);
+  seccionEstadisticas.append(tarjetaEstadistica1, tarjetaEstadistica2, tarjetaEstadistica3);
+  app.appendChild(seccionEstadisticas);
 
   const quickSearchSection = document.createElement('section');
   quickSearchSection.className = 'gallery-section';
@@ -382,7 +381,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   quickSearchSection.appendChild(quickSearchList);
   app.appendChild(quickSearchSection);
 
-  if (departments.length) {
+  if (departamentos.length) {
     const departmentsSection = document.createElement('section');
     departmentsSection.className = 'gallery-section';
     const departmentsTitle = document.createElement('h2');
@@ -392,7 +391,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     const departmentsGrid = document.createElement('div');
     departmentsGrid.className = 'grid';
 
-    departments.slice(0, 6).forEach((department) => {
+    departamentos.slice(0, 6).forEach((department) => {
       const icon = getDepartmentIcon(department.displayName || '');
       const card = createCard({
         title: `${icon} ${department.displayName || 'Departamento'}`,
@@ -408,8 +407,8 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     app.appendChild(departmentsSection);
   }
 
-  const recentItems = readRecentItems();
-  if (recentItems.length) {
+  const itemsRecientes = leerItemsRecientes();
+  if (itemsRecientes.length) {
     const recentSection = document.createElement('section');
     recentSection.className = 'gallery-section';
     const recentTitle = document.createElement('h2');
@@ -419,14 +418,14 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     const recentGrid = document.createElement('div');
     recentGrid.className = 'grid';
 
-    recentItems.forEach((item) => {
+    itemsRecientes.forEach((item) => {
       const card = createCard({
         title: item.title || 'Sin título',
         subtitle: item.artistDisplayName || 'Artista desconocido',
         meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
         imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
         actionLabel: 'Ver detalle',
-        onAction: () => openDetail(item),
+        onAction: () => abrirDetalle(item),
       });
       recentGrid.appendChild(card);
     });
@@ -444,7 +443,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   const grid = document.createElement('div');
   grid.className = 'grid';
 
-  if (!validItems.length) {
+  if (!itemsValidos.length) {
     grid.appendChild(createState('No se pudieron cargar obras destacadas en este momento.'));
     gallerySection.appendChild(grid);
     app.appendChild(gallerySection);
@@ -459,7 +458,7 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
       meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
       imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
       actionLabel: 'Ver detalle',
-      onAction: () => openDetail(item),
+      onAction: () => abrirDetalle(item),
     });
     grid.appendChild(card);
   });
@@ -492,15 +491,15 @@ async function getDepartmentPreviewImage(departmentId) {
   }
 
   try {
-    const searchResult = await fetchJson(`${API_BASE}/search?q=${encodeURIComponent('*')}&departmentId=${departmentId}&hasImages=true`);
-    const ids = Array.isArray(searchResult.objectIDs) ? searchResult.objectIDs : [];
+    const resultadoBusqueda = await obtenerJson(`${API_BASE}/search?q=${encodeURIComponent('*')}&departmentId=${departmentId}&hasImages=true`);
+    const ids = Array.isArray(resultadoBusqueda.objectIDs) ? resultadoBusqueda.objectIDs : [];
     if (!ids.length) {
       return null;
     }
 
     const candidateIds = ids.slice(0, Math.min(ids.length, 8));
     const randomId = candidateIds[Math.floor(Math.random() * candidateIds.length)];
-    const item = await fetchJson(`${API_BASE}/objects/${randomId}`);
+    const item = await obtenerJson(`${API_BASE}/objects/${randomId}`);
     return item?.primaryImageSmall || item?.primaryImage || null;
   } catch {
     return null;
@@ -647,7 +646,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
   const applyFilters = (resetPage = true) => {
     if (resetPage) {
-      filters.page = 1;
+      filtros.page = 1;
     }
 
     clearTimeout(searchTimer);
@@ -658,13 +657,13 @@ function renderExploreView(app, params = new URLSearchParams()) {
   };
 
   const resetForm = () => {
-    filters.q = '';
-    filters.department = '';
-    filters.yearFrom = '';
-    filters.yearTo = '';
-    filters.isHighlight = false;
-    filters.hasImages = false;
-    filters.page = 1;
+    filtros.q = '';
+    filtros.department = '';
+    filtros.yearFrom = '';
+    filtros.yearTo = '';
+    filtros.isHighlight = false;
+    filtros.hasImages = false;
+    filtros.page = 1;
     searchInput.value = '';
     departmentSelect.value = '';
     yearFromInput.value = '';
@@ -682,12 +681,12 @@ function renderExploreView(app, params = new URLSearchParams()) {
   };
 
   searchInput.addEventListener('input', () => {
-    filters.q = searchInput.value.trim();
+    filtros.q = searchInput.value.trim();
     applyFilters(true);
   });
 
   departmentSelect.addEventListener('change', () => {
-    filters.department = departmentSelect.value;
+    filtros.department = departmentSelect.value;
     applyFilters(true);
   });
 
@@ -709,8 +708,8 @@ function renderExploreView(app, params = new URLSearchParams()) {
       return;
     }
 
-    filters.yearFrom = fromVal;
-    filters.yearTo = toVal;
+    filtros.yearFrom = fromVal;
+    filtros.yearTo = toVal;
     applyFilters(true);
   };
 
@@ -718,31 +717,31 @@ function renderExploreView(app, params = new URLSearchParams()) {
   yearToInput.addEventListener('input', validateAndApplyYearFilters);
 
   highlightCheckbox.addEventListener('change', () => {
-    filters.isHighlight = highlightCheckbox.checked;
+    filtros.isHighlight = highlightCheckbox.checked;
     applyFilters(true);
   });
 
   imageCheckbox.addEventListener('change', () => {
-    filters.hasImages = imageCheckbox.checked;
+    filtros.hasImages = imageCheckbox.checked;
     applyFilters(true);
   });
 
   clearButton.addEventListener('click', resetForm);
 
-  fetchJson(`${API_BASE}/departments`)
+  obtenerJson(`${API_BASE}/departments`)
     .then((data) => {
       populateDepartments(departmentSelect, data.departments || []);
-      if (filters.department) {
-        departmentSelect.value = filters.department;
+      if (filtros.department) {
+        departmentSelect.value = filtros.department;
       }
-      if (filters.q) {
-        searchInput.value = filters.q;
+      if (filtros.q) {
+        searchInput.value = filtros.q;
       }
-      if (filters.yearFrom) {
-        yearFromInput.value = filters.yearFrom;
+      if (filtros.yearFrom) {
+        yearFromInput.value = filtros.yearFrom;
       }
-      if (filters.yearTo) {
-        yearToInput.value = filters.yearTo;
+      if (filtros.yearTo) {
+        yearToInput.value = filtros.yearTo;
       }
       highlightCheckbox.checked = filters.isHighlight;
       imageCheckbox.checked = filters.hasImages;
@@ -772,7 +771,7 @@ function populateDepartments(select, departments) {
   });
 }
 
-function loadExploreResults(app, filters, elements, applyFilters) {
+function loadExploreResults(app, filtros, elements, applyFilters) {
   const { results, aggregates, pagination } = elements;
   let { resultsSummary } = elements;
   if (!resultsSummary && results && results.parentElement) {
@@ -785,7 +784,7 @@ function loadExploreResults(app, filters, elements, applyFilters) {
   const params = new URLSearchParams();
   let departmentName = '';
 
-  if (filters.department) {
+  if (filtros.department) {
     try {
       const select = document.querySelector('.filter-panel select');
       departmentName = select.options[select.selectedIndex].text;
@@ -794,52 +793,52 @@ function loadExploreResults(app, filters, elements, applyFilters) {
     }
   }
 
-  params.set('q', filters.q || departmentName || '*');
+  params.set('q', filtros.q || departmentName || '*');
 
-  if (filters.department) {
-    params.set('departmentId', filters.department);
+  if (filtros.department) {
+    params.set('departmentId', filtros.department);
   }
-  if (filters.yearFrom) {
-    params.set('dateBegin', filters.yearFrom);
+  if (filtros.yearFrom) {
+    params.set('dateBegin', filtros.yearFrom);
   }
-  if (filters.yearTo) {
-    params.set('dateEnd', filters.yearTo);
+  if (filtros.yearTo) {
+    params.set('dateEnd', filtros.yearTo);
   }
-  if (filters.isHighlight) {
+  if (filtros.isHighlight) {
     params.set('isHighlight', 'true');
   }
-  if (filters.hasImages) {
+  if (filtros.hasImages) {
     params.set('hasImages', 'true');
   }
 
-  const startIndex = (filters.page - 1) * PAGE_SIZE;
+  const startIndex = (filtros.page - 1) * TAMANO_PAGINA;
 
-  fetchJson(`${API_BASE}/search?${params.toString()}`)
+  obtenerJson(`${API_BASE}/search?${params.toString()}`)
     .then((data) => {
-      const objectIds = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.objectIDs : getFallbackObjectIdsByQuery(filters.q);
-      const total = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.total || objectIds.length : objectIds.length;
-      const pageIds = objectIds.slice(startIndex, startIndex + PAGE_SIZE);
+      const idsObjetos = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.objectIDs : obtenerIdsObjetoRespaldoPorQuery(filtros.q);
+      const total = Array.isArray(data?.objectIDs) && data.objectIDs.length ? data.total || idsObjetos.length : idsObjetos.length;
+      const pageIds = idsObjetos.slice(startIndex, startIndex + TAMANO_PAGINA);
 
       if (!pageIds.length) {
         renderEmptyExploreState(results, aggregates, pagination, total);
         return;
       }
 
-      return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, total, resolvedResults, applyFilters);
+      return resolverDetallesObjeto(pageIds).then((resolvedResults) => {
+        renderExploreResults(app, filtros, { results, aggregates, pagination, resultsSummary }, total, resolvedResults, applyFilters);
       });
     })
     .catch(() => {
-      const fallbackIds = getFallbackObjectIdsByQuery(filters.q);
-      const pageIds = fallbackIds.slice(startIndex, startIndex + PAGE_SIZE);
+      const fallbackIds = obtenerIdsObjetoRespaldoPorQuery(filtros.q);
+      const pageIds = fallbackIds.slice(startIndex, startIndex + TAMANO_PAGINA);
 
       if (!pageIds.length) {
         renderEmptyExploreState(results, aggregates, pagination, 0);
         return;
       }
 
-      return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, fallbackIds.length, resolvedResults, applyFilters);
+      return resolverDetallesObjeto(pageIds).then((resolvedResults) => {
+        renderExploreResults(app, filtros, { results, aggregates, pagination, resultsSummary }, fallbackIds.length, resolvedResults, applyFilters);
       });
     });
 }
@@ -861,23 +860,23 @@ function renderEmptyExploreState(results, aggregates, pagination, total) {
   pagination.innerHTML = '';
 }
 
-function renderExploreResults(app, filters, elements, total, resolvedResults, applyFilters) {
+function renderExploreResults(app, filtros, elements, total, resolvedResults, applyFilters) {
   const { results, aggregates, pagination, resultsSummary } = elements;
-  const validItems = resolvedResults.filter((result) => result.status === 'fulfilled' && result.value);
+  const itemsValidos = resolvedResults.filter((result) => result.status === 'fulfilled' && result.value);
 
   results.innerHTML = '';
   resultsSummary.innerHTML = '';
   const grid = document.createElement('div');
   grid.className = 'results-grid';
 
-  if (!validItems.length) {
+  if (!itemsValidos.length) {
     const summaryText = document.createElement('p');
     summaryText.textContent = 'No hay resultados para esta página.';
     resultsSummary.appendChild(summaryText);
     grid.appendChild(createState('No se pudieron cargar las obras de esta página.'));
     results.appendChild(grid);
   } else {
-    validItems.forEach((result) => {
+    itemsValidos.forEach((result) => {
       const item = result.value;
       const card = createCard({
         title: item.title || 'Sin título',
@@ -885,19 +884,19 @@ function renderExploreResults(app, filters, elements, total, resolvedResults, ap
         meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
         imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
         actionLabel: 'Ver detalle',
-        onAction: () => openDetail(item),
+        onAction: () => abrirDetalle(item),
       });
       grid.appendChild(card);
     });
     const summaryText = document.createElement('p');
-    summaryText.textContent = `Mostrando ${validItems.length} obras de ${total} resultados totales.`;
+    summaryText.textContent = `Mostrando ${itemsValidos.length} obras de ${total} resultados totales.`;
     resultsSummary.appendChild(summaryText);
     results.appendChild(grid);
   }
 
-  renderAggregates(aggregates, total, validItems.map((result) => result.value));
-  renderPagination(pagination, filters.page, total, (newPage) => {
-    filters.page = newPage;
+  renderAggregates(aggregates, total, itemsValidos.map((result) => result.value));
+  renderPagination(pagination, filtros.page, total, (newPage) => {
+    filtros.page = newPage;
     applyFilters(false); // Re-aplica filtros sin resetear la página
   });
 }
@@ -1022,7 +1021,7 @@ function getYearDifference(itemA, itemB) {
 
 function renderPagination(pagination, currentPage, total, onPageChange) {
   pagination.innerHTML = '';
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / TAMANO_PAGINA));
 
   const previousButton = document.createElement('button');
   previousButton.textContent = 'Anterior';
@@ -1045,17 +1044,17 @@ function renderDetailView(app, id) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando detalle de la obra...'));
 
-  const cachedItem = getObjectFromCache(id);
+  const cachedItem = obtenerObjetoDeCache(id);
   if (cachedItem) {
-    saveRecentItem(cachedItem);
+    guardarItemReciente(cachedItem);
     renderDetailContent(app, cachedItem);
     return;
   }
 
-  fetchJson(`${API_BASE}/objects/${id}`)
+  obtenerJson(`${API_BASE}/objects/${id}`)
     .then((item) => {
-      saveObjectToCache(item);
-      saveRecentItem(item);
+      guardarObjetoEnCache(item);
+      guardarItemReciente(item);
       renderDetailContent(app, item);
     })
     .catch(() => {
@@ -1217,7 +1216,7 @@ function renderDepartmentsView(app) {
   app.innerHTML = '';
   app.appendChild(createState('Cargando departamentos...'));
 
-  fetchJson(`${API_BASE}/departments`)
+  obtenerJson(`${API_BASE}/departments`)
     .then((data) => {
       app.innerHTML = '';
 
@@ -1264,14 +1263,14 @@ function renderArtistView(app, name, currentPage = 1) {
   app.appendChild(createState('Cargando obras del artista...'));
 
   const encodedName = encodeURIComponent(name || '');
-  fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
+  obtenerJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
     .then((data) => {
-      const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs.slice(0, 12) : [];
-      const total = data.total || objectIds.length;
-      const pageSize = PAGE_SIZE;
+      const idsObjetos = Array.isArray(data.objectIDs) ? data.objectIDs.slice(0, 12) : [];
+      const total = data.total || idsObjetos.length;
+      const pageSize = TAMANO_PAGINA;
       const totalPages = Math.max(1, Math.ceil(total / pageSize));
-      const page = Math.min(Math.max(1, currentPage), totalPages);
-      const pageIds = objectIds.slice((page - 1) * pageSize, page * pageSize);
+      const pagina = Math.min(Math.max(1, currentPage), totalPages);
+      const pageIds = idsObjetos.slice((pagina - 1) * pageSize, pagina * pageSize);
 
       app.innerHTML = '';
       const section = document.createElement('section');
@@ -1298,7 +1297,7 @@ function renderArtistView(app, name, currentPage = 1) {
         return;
       }
 
-      return Promise.allSettled(pageIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
+      return Promise.allSettled(pageIds.map((id) => obtenerJson(`${API_BASE}/objects/${id}`))).then((results) => {
         const grid = document.createElement('div');
         grid.className = 'grid';
 
@@ -1311,7 +1310,7 @@ function renderArtistView(app, name, currentPage = 1) {
               meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
               imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
               actionLabel: 'Ver detalle',
-              onAction: () => openDetail(item),
+              onAction: () => abrirDetalle(item),
             });
             grid.appendChild(card);
           }
@@ -1325,17 +1324,17 @@ function renderArtistView(app, name, currentPage = 1) {
 
           const prev = document.createElement('button');
           prev.textContent = 'Anterior';
-          prev.disabled = page <= 1;
-          prev.addEventListener('click', () => renderArtistView(app, name, page - 1));
+          prev.disabled = pagina <= 1;
+          prev.addEventListener('click', () => renderArtistView(app, name, pagina - 1));
 
           const indicator = document.createElement('span');
           indicator.className = 'page-indicator';
-          indicator.textContent = `Página ${page} de ${totalPages}`;
+          indicator.textContent = `Página ${pagina} de ${totalPages}`;
 
           const next = document.createElement('button');
           next.textContent = 'Siguiente';
-          next.disabled = page >= totalPages;
-          next.addEventListener('click', () => renderArtistView(app, name, page + 1));
+          next.disabled = pagina >= totalPages;
+          next.addEventListener('click', () => renderArtistView(app, name, pagina + 1));
 
           pagination.append(prev, indicator, next);
           section.appendChild(pagination);
@@ -1382,10 +1381,10 @@ function renderCompareView(app, params = new URLSearchParams()) {
   section.appendChild(tableWrapper);
 
   const initSelections = async () => {
-    const saved = loadCompareState();
+    const saved = cargarEstadoComparador();
     if (selectedAId) {
       try {
-        const item = await fetchJson(`${API_BASE}/objects/${selectedAId}`);
+        const item = await obtenerJson(`${API_BASE}/objects/${selectedAId}`);
         if (item) {
           const sel = panelA.querySelector('.compare-selected');
           sel.innerHTML = '';
@@ -1408,7 +1407,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     if (saved) {
       if (!state.selectedA && saved.A && saved.A.objectID) {
         try {
-          const item = await fetchJson(`${API_BASE}/objects/${saved.A.objectID}`);
+          const item = await obtenerJson(`${API_BASE}/objects/${saved.A.objectID}`);
           if (item) {
             const sel = panelA.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1429,7 +1428,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
       }
       if (saved.B && saved.B.objectID) {
         try {
-          const item = await fetchJson(`${API_BASE}/objects/${saved.B.objectID}`);
+          const item = await obtenerJson(`${API_BASE}/objects/${saved.B.objectID}`);
           if (item) {
             const sel = panelB.querySelector('.compare-selected');
             sel.innerHTML = '';
@@ -1544,7 +1543,7 @@ function renderCompareView(app, params = new URLSearchParams()) {
     } else {
       state.selectedB = item;
     }
-    saveCompareState(state);
+    guardarEstadoComparador(state);
     renderComparison();
   };
 
@@ -1560,14 +1559,14 @@ function renderCompareView(app, params = new URLSearchParams()) {
     if (event.detail.panelKey === 'A') {
       state.selectedA = null;
     }
-    saveCompareState(state);
+    guardarEstadoComparador(state);
     renderComparison();
   });
   panelB.addEventListener('clear-selection', (event) => {
     if (event.detail.panelKey === 'B') {
       state.selectedB = null;
     }
-    saveCompareState(state);
+    guardarEstadoComparador(state);
     renderComparison();
   });
 
@@ -1628,7 +1627,7 @@ function createComparePanel(title, state, panelKey) {
     results.appendChild(createState('Buscando obras...'));
 
     debounceTimer = window.setTimeout(() => {
-      fetchJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
+      obtenerJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
         .then((data) => {
           const ids = (data.objectIDs || []).slice(0, 4);
           if (!ids.length) {
@@ -1637,7 +1636,7 @@ function createComparePanel(title, state, panelKey) {
             return;
           }
 
-          return Promise.allSettled(ids.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((resolved) => {
+          return Promise.allSettled(ids.map((id) => obtenerJson(`${API_BASE}/objects/${id}`))).then((resolved) => {
             results.innerHTML = '';
             resolved.forEach((result) => {
               if (result.status === 'fulfilled' && result.value) {
