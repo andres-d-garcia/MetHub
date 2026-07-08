@@ -2,7 +2,8 @@ import { API_BASE, fetchJson } from './api.js';
 import { createCard, createState, getImageFallbackSrc } from './components.js';
 import { navigateTo } from './router.js';
 
-const PAGE_SIZE = 12;
+const PAGE_SIZE = 6;
+const MAX_PARALLEL_REQUESTS = 4;
 const FALLBACK_OBJECTS = {
   436535: {
     objectID: 436535,
@@ -127,9 +128,17 @@ function getFallbackObjectIdsByQuery(query = '') {
   return Object.keys(FALLBACK_OBJECTS).map((k) => Number(k));
 }
 
-function resolveObjectDetails(ids) {
+async function resolveObjectDetails(ids) {
   const safeIds = Array.isArray(ids) ? ids.filter(Boolean) : [];
-  return Promise.allSettled(safeIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
+  const results = [];
+
+  for (let index = 0; index < safeIds.length; index += MAX_PARALLEL_REQUESTS) {
+    const chunk = safeIds.slice(index, index + MAX_PARALLEL_REQUESTS);
+    const chunkResults = await Promise.allSettled(chunk.map((id) => fetchJson(`${API_BASE}/objects/${id}`).catch(() => getFallbackObjectById(id))));
+    results.push(...chunkResults);
+  }
+
+  return results;
 }
 
 function saveCompareState(state) {
@@ -236,7 +245,7 @@ function renderHomeView(app) {
       }
 
       const departments = departmentsResult.value?.departments || [];
-      const objectIds = (searchResult.value?.objectIDs || []).slice(0, 8);
+      const objectIds = (searchResult.value?.objectIDs || []).slice(0, 4);
       const totalCollectionWorks = totalCollectionResult.status === 'fulfilled' ? (totalCollectionResult.value?.total || 0) : 0;
 
       if (!objectIds.length) {
@@ -399,6 +408,11 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
     recentSection.appendChild(recentGrid);
     app.appendChild(recentSection);
   }
+
+  const gallerySection = document.createElement('section');
+  gallerySection.className = 'gallery-section';
+  const galleryTitle = document.createElement('h2');
+  galleryTitle.textContent = 'Obras destacadas';
   gallerySection.appendChild(galleryTitle);
 
   const grid = document.createElement('div');
@@ -519,27 +533,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
   yearToInput.type = 'number';
   yearToInput.placeholder = 'Hasta';
 
-  // Add dual-range slider supporting negative years up to current year
-  const currentYear = new Date().getFullYear();
-  const rangeWrapper = document.createElement('div');
-  rangeWrapper.className = 'year-range-wrapper';
-  const rangeFrom = document.createElement('input');
-  rangeFrom.type = 'range';
-  rangeFrom.className = 'year-range';
-  rangeFrom.min = -2000;
-  rangeFrom.max = currentYear;
-  rangeFrom.step = 1;
-
-  const rangeTo = document.createElement('input');
-  rangeTo.type = 'range';
-  rangeTo.className = 'year-range';
-  rangeTo.min = -2000;
-  rangeTo.max = currentYear;
-  rangeTo.step = 1;
-
-  rangeWrapper.append(rangeFrom, rangeTo);
-
-  yearField.append(yearLabel, yearFromInput, yearToInput, rangeWrapper);
+  yearField.append(yearLabel, yearFromInput, yearToInput);
 
   const checkboxGroup = document.createElement('div');
   checkboxGroup.className = 'checkbox-group';
@@ -668,40 +662,31 @@ function renderExploreView(app, params = new URLSearchParams()) {
     applyFilters(true);
   });
 
-  yearFromInput.addEventListener('input', () => {
-    filters.yearFrom = yearFromInput.value;
-    applyFilters(true);
-  });
+  const validateAndApplyYearFilters = () => {
+    const fromVal = yearFromInput.value;
+    const toVal = yearToInput.value;
+    const fromNum = Number(fromVal);
+    const toNum = Number(toVal);
 
-  yearToInput.addEventListener('input', () => {
-    filters.yearTo = yearToInput.value;
-    applyFilters(true);
-  });
-
-  // Sync range -> number inputs and filters
-  rangeFrom.addEventListener('input', () => {
-    const v = Number(rangeFrom.value);
-    if (Number(rangeTo.value) < v) {
-      rangeTo.value = v;
+    let isValid = true;
+    if (fromVal && toVal && fromNum > toNum) {
+      isValid = false;
     }
-    yearFromInput.value = rangeFrom.value;
-    yearToInput.value = rangeTo.value;
-    filters.yearFrom = String(rangeFrom.value);
-    filters.yearTo = String(rangeTo.value);
-    applyFilters(true);
-  });
 
-  rangeTo.addEventListener('input', () => {
-    const v = Number(rangeTo.value);
-    if (Number(rangeFrom.value) > v) {
-      rangeFrom.value = v;
+    yearFromInput.classList.toggle('invalid', !isValid);
+    yearToInput.classList.toggle('invalid', !isValid);
+
+    if (!isValid) {
+      return;
     }
-    yearFromInput.value = rangeFrom.value;
-    yearToInput.value = rangeTo.value;
-    filters.yearFrom = String(rangeFrom.value);
-    filters.yearTo = String(rangeTo.value);
+
+    filters.yearFrom = fromVal;
+    filters.yearTo = toVal;
     applyFilters(true);
-  });
+  };
+
+  yearFromInput.addEventListener('input', validateAndApplyYearFilters);
+  yearToInput.addEventListener('input', validateAndApplyYearFilters);
 
   highlightCheckbox.addEventListener('change', () => {
     filters.isHighlight = highlightCheckbox.checked;
@@ -726,15 +711,9 @@ function renderExploreView(app, params = new URLSearchParams()) {
       }
       if (filters.yearFrom) {
         yearFromInput.value = filters.yearFrom;
-        rangeFrom.value = filters.yearFrom;
-      } else {
-        rangeFrom.value = rangeFrom.min;
       }
       if (filters.yearTo) {
         yearToInput.value = filters.yearTo;
-        rangeTo.value = filters.yearTo;
-      } else {
-        rangeTo.value = rangeTo.max;
       }
       highlightCheckbox.checked = filters.isHighlight;
       imageCheckbox.checked = filters.hasImages;
@@ -775,9 +754,19 @@ function loadExploreResults(app, filters, elements) {
   results.appendChild(createState('Cargando resultados...'));
 
   const params = new URLSearchParams();
-  if (filters.q) {
-    params.set('q', filters.q);
+  let departmentName = '';
+
+  if (filters.department) {
+    try {
+      const select = document.querySelector('.filter-panel select');
+      departmentName = select.options[select.selectedIndex].text;
+    } catch {
+      // ignore error
+    }
   }
+
+  params.set('q', filters.q || departmentName || '*');
+
   if (filters.department) {
     params.set('departmentId', filters.department);
   }
@@ -1262,7 +1251,7 @@ function renderArtistView(app, name, currentPage = 1) {
   const encodedName = encodeURIComponent(name || '');
   fetchJson(`${API_BASE}/search?q=${encodedName}&artistOrCulture=true`)
     .then((data) => {
-      const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs : [];
+      const objectIds = Array.isArray(data.objectIDs) ? data.objectIDs.slice(0, 12) : [];
       const total = data.total || objectIds.length;
       const pageSize = PAGE_SIZE;
       const totalPages = Math.max(1, Math.ceil(total / pageSize));
@@ -1552,6 +1541,20 @@ function renderCompareView(app, params = new URLSearchParams()) {
   panelB.addEventListener('select-item', (event) => {
     applySelection(event.detail.panelKey, event.detail.item);
   });
+  panelA.addEventListener('clear-selection', (event) => {
+    if (event.detail.panelKey === 'A') {
+      state.selectedA = null;
+    }
+    saveCompareState(state);
+    renderComparison();
+  });
+  panelB.addEventListener('clear-selection', (event) => {
+    if (event.detail.panelKey === 'B') {
+      state.selectedB = null;
+    }
+    saveCompareState(state);
+    renderComparison();
+  });
 
   app.appendChild(section);
 }
@@ -1577,6 +1580,24 @@ function createComparePanel(title, state, panelKey) {
   selected.className = 'compare-selected';
   panel.appendChild(selected);
 
+  const changeButton = document.createElement('button');
+  changeButton.className = 'secondary-btn compare-change-btn';
+  changeButton.textContent = 'Cambiar selección';
+  changeButton.style.display = 'none';
+  panel.appendChild(changeButton);
+
+  panel.setSelectionState = (isSelected) => {
+    changeButton.style.display = isSelected ? 'inline-flex' : 'none';
+  };
+
+  changeButton.addEventListener('click', () => {
+    selected.innerHTML = '';
+    results.innerHTML = '';
+    searchInput.value = '';
+    panel.setSelectionState(false);
+    panel.dispatchEvent(new CustomEvent('clear-selection', { detail: { panelKey } }));
+  });
+
   let debounceTimer;
 
   searchInput.addEventListener('input', () => {
@@ -1594,7 +1615,7 @@ function createComparePanel(title, state, panelKey) {
     debounceTimer = window.setTimeout(() => {
       fetchJson(`${API_BASE}/search?q=${encodeURIComponent(value)}&hasImages=true`)
         .then((data) => {
-          const ids = (data.objectIDs || []).slice(0, 6);
+          const ids = (data.objectIDs || []).slice(0, 4);
           if (!ids.length) {
             results.innerHTML = '';
             results.appendChild(createState('No se encontraron obras con ese término.'));
@@ -1629,6 +1650,7 @@ function createComparePanel(title, state, panelKey) {
                   });
                   selected.appendChild(card);
                   results.innerHTML = '';
+                  panel.setSelectionState(true);
                   panel.dispatchEvent(new CustomEvent('select-item', { detail: { panelKey, item } }));
                 });
                 results.appendChild(suggestion);

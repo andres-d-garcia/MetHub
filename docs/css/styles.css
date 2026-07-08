@@ -7,6 +7,8 @@
   --accent-soft: #fff0db;
   --border: #f1c88d;
   --shadow: 0 8px 24px rgba(246, 36, 64, 0.12);
+  --font-body: "Cormorant", Georgia, "Times New Roman", serif;
+  --font-display: "Cormorant", Georgia, "Times New Roman", serif;
 }
 
 * {
@@ -14,11 +16,37 @@
 }
 
 body {
+  position: relative;
+  min-height: 100vh;
   margin: 0;
-  font-family: Georgia, "Times New Roman", serif;
-  background: linear-gradient(180deg, #fff7eb 0%, var(--bg) 100%);
+  overflow-x: hidden;
+  font-family: var(--font-body);
+  font-size: 1.05rem;
   color: var(--text);
-  line-height: 1.5;
+  line-height: 1.6;
+  isolation: isolate;
+  background: linear-gradient(180deg, #fff7eb 0%, var(--bg) 100%);
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background-image: url("assets/f4785b84447903b0afc2b2032a5a968c19d04435-5120x2880.avif");
+  background-size: cover;
+  background-position: center;
+  filter: blur(1px) brightness(0.8);
+  transform: scale(1.05);
+  opacity: 1.5;
+  z-index: -2;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 247, 235, 0.72) 0%, rgba(255, 229, 191, 0.76) 100%);
+  z-index: -1;
 }
 
 .topbar {
@@ -36,10 +64,11 @@ body {
 }
 
 .brand {
-  font-size: 1.4rem;
+  font-size: 1.6rem;
   font-weight: 700;
   color: #fffaf3;
   text-decoration: none;
+  font-family: var(--font-display);
 }
 
 .nav-links {
@@ -51,6 +80,7 @@ body {
   text-decoration: none;
   color: #fffaf3;
   font-weight: 600;
+  font-size: 1.05rem;
 }
 
 .nav-links a.active {
@@ -99,6 +129,7 @@ body {
   border-radius: 16px;
   padding: 1.25rem;
   box-shadow: var(--shadow);
+  font-size: 1.04rem;
 }
 
 .hero {
@@ -149,6 +180,7 @@ body {
 .secondary-btn,
 .retry-btn,
 .pagination button {
+  font-family: var(--font-body);
   border: none;
   background: var(--accent);
   color: white;
@@ -384,7 +416,7 @@ body {
 
 .meta-section,
 .tags-section {
-  background: #fffaf3af3;
+  background: rgba(255, 250, 243, 0.95);
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 0.9rem;
@@ -443,6 +475,10 @@ body {
   padding: 0.65rem;
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+
+.compare-change-btn {
+  align-self: flex-start;
 }
 
 .compare-results {
@@ -505,6 +541,7 @@ body {
 .diff-badge {
   display: inline-block;
   margin-top: 0.35rem;
+  margin-left: 0.35rem;
   padding: 0.2rem 0.5rem;
   border-radius: 999px;
   background: var(--accent);
