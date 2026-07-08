@@ -240,7 +240,7 @@ function renderHomeView(app) {
   ])
     .then(([departmentsResult, searchResult, totalCollectionResult]) => {
       if (departmentsResult.status === 'rejected' || searchResult.status === 'rejected') {
-        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), [], 0);
+        renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), []);
         return;
       }
 
@@ -262,15 +262,15 @@ function renderHomeView(app) {
       }
 
       return Promise.allSettled(objectIds.map((id) => fetchJson(`${API_BASE}/objects/${id}`))).then((results) => {
-        renderHomeContent(app, departments.length, objectIds.length, results, departments, totalCollectionWorks);
+        renderHomeContent(app, departments.length, objectIds.length, results, departments);
       });
     })
     .catch(() => {
-      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), [], 0);
+      renderHomeContent(app, 19, FALLBACK_HIGHLIGHTS.length, FALLBACK_HIGHLIGHTS.map((item) => ({ status: 'fulfilled', value: item })), []);
     });
 }
 
-function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = [], totalCollectionWorks = 0) {
+function renderHomeContent(app, totalDepartments, totalHighlights, objectResults, departments = []) {
   app.innerHTML = '';
 
   const hero = document.createElement('section');
@@ -307,15 +307,41 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   statsCard1.className = 'stat-card';
   statsCard1.innerHTML = `<strong>${totalDepartments}</strong><span>Departamentos</span>`;
 
+  const validItems = objectResults.filter((r) => r.status === 'fulfilled' && r.value).map((r) => r.value);
+
+  const artistCounts = new Map();
+  validItems.forEach((item) => {
+    const artist = item.artistDisplayName || 'Artista desconocido';
+    artistCounts.set(artist, (artistCounts.get(artist) || 0) + 1);
+  });
+
+  let frequentArtist = '—';
+  let maxCount = 0;
+  artistCounts.forEach((count, artist) => {
+    if (count > maxCount) {
+      frequentArtist = artist;
+      maxCount = count;
+    }
+  });
+
   const statsCard2 = document.createElement('div');
   statsCard2.className = 'stat-card';
-  statsCard2.innerHTML = `<strong>${totalHighlights}</strong><span>Obras destacadas</span>`;
+  statsCard2.innerHTML = `<strong>${frequentArtist}</strong><span>Artista más frecuente (destacadas)</span>`;
 
-  const totalWorksFormatter = new Intl.NumberFormat('es-ES');
+  let oldestWork = null;
+  if (validItems.length > 0) {
+    oldestWork = validItems.reduce((oldest, current) => {
+      if (!oldest || (current.objectBeginDate && current.objectBeginDate < oldest.objectBeginDate)) {
+        return current;
+      }
+      return oldest;
+    }, null);
+  }
+
   const statsCard3 = document.createElement('div');
   statsCard3.className = 'stat-card';
-  statsCard3.innerHTML = `<strong>${totalCollectionWorks ? totalWorksFormatter.format(totalCollectionWorks) : '—'}</strong><span>Obras en el Met</span>`;
-
+  statsCard3.innerHTML = `<strong>${oldestWork ? oldestWork.objectDate : '—'}</strong><span>Obra más antigua (destacadas)</span>`;
+  
   statsSection.append(statsCard1, statsCard2, statsCard3);
   app.appendChild(statsSection);
 
@@ -418,8 +444,6 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   const grid = document.createElement('div');
   grid.className = 'grid';
 
-  const validItems = objectResults.filter((result) => result.status === 'fulfilled' && result.value);
-
   if (!validItems.length) {
     grid.appendChild(createState('No se pudieron cargar obras destacadas en este momento.'));
     gallerySection.appendChild(grid);
@@ -484,10 +508,15 @@ async function getDepartmentPreviewImage(departmentId) {
 }
 
 function renderExploreView(app, params = new URLSearchParams()) {
-  app.innerHTML = '';
+  // Si el panel de exploración ya existe, no lo volvemos a renderizar.
+  // Esto evita el parpadeo al cambiar filtros.
+  if (document.querySelector('.panel.explore-view')) {
+    return;
+  }
 
+  app.innerHTML = '';
   const section = document.createElement('section');
-  section.className = 'panel';
+  section.className = 'panel explore-view';
 
   const title = document.createElement('h2');
   title.textContent = 'Explorar';
@@ -612,7 +641,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
 
     const nextHash = hashParams.toString() ? `#explore?${hashParams.toString()}` : '#explore';
     if (window.location.hash !== nextHash) {
-      window.location.hash = nextHash;
+      window.history.replaceState(null, '', nextHash);
     }
   };
 
@@ -624,7 +653,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
     clearTimeout(searchTimer);
     searchTimer = window.setTimeout(() => {
       syncExploreHash();
-      loadExploreResults(app, filters, { results, aggregates, pagination });
+      loadExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, applyFilters);
     }, 400);
   };
 
@@ -725,7 +754,7 @@ function renderExploreView(app, params = new URLSearchParams()) {
       controls.appendChild(message);
     });
 
-  loadExploreResults(app, filters, { results, aggregates, pagination, resultsSummary });
+  loadExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, applyFilters);
 }
 
 function populateDepartments(select, departments) {
@@ -743,7 +772,7 @@ function populateDepartments(select, departments) {
   });
 }
 
-function loadExploreResults(app, filters, elements) {
+function loadExploreResults(app, filters, elements, applyFilters) {
   const { results, aggregates, pagination } = elements;
   let { resultsSummary } = elements;
   if (!resultsSummary && results && results.parentElement) {
@@ -797,7 +826,7 @@ function loadExploreResults(app, filters, elements) {
       }
 
       return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, total, resolvedResults);
+        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, total, resolvedResults, applyFilters);
       });
     })
     .catch(() => {
@@ -810,7 +839,7 @@ function loadExploreResults(app, filters, elements) {
       }
 
       return resolveObjectDetails(pageIds).then((resolvedResults) => {
-        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, fallbackIds.length, resolvedResults);
+        renderExploreResults(app, filters, { results, aggregates, pagination, resultsSummary }, fallbackIds.length, resolvedResults, applyFilters);
       });
     });
 }
@@ -832,7 +861,7 @@ function renderEmptyExploreState(results, aggregates, pagination, total) {
   pagination.innerHTML = '';
 }
 
-function renderExploreResults(app, filters, elements, total, resolvedResults) {
+function renderExploreResults(app, filters, elements, total, resolvedResults, applyFilters) {
   const { results, aggregates, pagination, resultsSummary } = elements;
   const validItems = resolvedResults.filter((result) => result.status === 'fulfilled' && result.value);
 
@@ -867,7 +896,10 @@ function renderExploreResults(app, filters, elements, total, resolvedResults) {
   }
 
   renderAggregates(aggregates, total, validItems.map((result) => result.value));
-  renderPagination(pagination, filters, total);
+  renderPagination(pagination, filters.page, total, (newPage) => {
+    filters.page = newPage;
+    applyFilters(false); // Re-aplica filtros sin resetear la página
+  });
 }
 
 function renderAggregates(aggregates, total, items) {
@@ -988,23 +1020,14 @@ function getYearDifference(itemA, itemB) {
   return Math.abs(yearA - yearB);
 }
 
-function renderPagination(pagination, filters, total) {
+function renderPagination(pagination, currentPage, total, onPageChange) {
   pagination.innerHTML = '';
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
-  const currentPage = Math.min(filters.page, totalPages);
 
   const previousButton = document.createElement('button');
   previousButton.textContent = 'Anterior';
   previousButton.disabled = currentPage <= 1;
-  previousButton.addEventListener('click', () => {
-    filters.page = Math.max(1, currentPage - 1);
-    syncExploreHash();
-    loadExploreResults(document.getElementById('app'), filters, {
-      results: pagination.parentElement.querySelector('.results-grid'),
-      aggregates: pagination.parentElement.querySelector('.aggregate-panel'),
-      pagination,
-    });
-  });
+  previousButton.addEventListener('click', () => onPageChange(currentPage - 1));
 
   const pageIndicator = document.createElement('span');
   pageIndicator.className = 'page-indicator';
@@ -1013,15 +1036,7 @@ function renderPagination(pagination, filters, total) {
   const nextButton = document.createElement('button');
   nextButton.textContent = 'Siguiente';
   nextButton.disabled = currentPage >= totalPages;
-  nextButton.addEventListener('click', () => {
-    filters.page = Math.min(totalPages, currentPage + 1);
-    syncExploreHash();
-    loadExploreResults(document.getElementById('app'), filters, {
-      results: pagination.parentElement.querySelector('.results-grid'),
-      aggregates: pagination.parentElement.querySelector('.aggregate-panel'),
-      pagination,
-    });
-  });
+  nextButton.addEventListener('click', () => onPageChange(currentPage + 1));
 
   pagination.append(previousButton, pageIndicator, nextButton);
 }
