@@ -56,7 +56,7 @@ body::after {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 1rem 1.5rem;
+  padding: 0.3rem 1.5rem;
   background: var(--accent);
   backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--accent);
@@ -64,11 +64,14 @@ body::after {
 }
 
 .brand {
-  font-size: 1.6rem;
-  font-weight: 700;
+  font-family: "Birthstone", cursive;
+  font-size: 2.8rem;
+  font-weight: 400;
   color: #fffaf3;
   text-decoration: none;
-  font-family: var(--font-display);
+  position: relative;
+  top: 4px;
+  padding-right: 1rem;
 }
 
 .nav-links {
@@ -79,12 +82,20 @@ body::after {
 .nav-links a {
   text-decoration: none;
   color: #fffaf3;
-  font-weight: 600;
-  font-size: 1.05rem;
+  font-weight: 700;
+  font-size: 1.1rem;
+  padding: 0.4rem 0.8rem;
+  border-radius: 6px;
+  transition: background-color 0.2s ease;
+}
+
+.nav-links a:hover {
+  background-color: rgba(255, 255, 255, 0.1);
 }
 
 .nav-links a.active {
   color: #ffe5bf;
+  background-color: rgba(0, 0, 0, 0.15);
 }
 
 .app-shell {
