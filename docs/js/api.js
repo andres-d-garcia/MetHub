@@ -1,49 +1,49 @@
 const API_BASE = 'https://collectionapi.metmuseum.org/public/collection/v1';
 
-function obtenerClaveCache(url) {
+function getCacheKey(url) {
   try {
-    const urlParseada = new URL(url, window.location.origin);
-    return `methub-cache:${urlParseada.pathname}${urlParseada.search}`;
+    const parsedUrl = new URL(url, window.location.origin);
+    return `methub-cache:${parsedUrl.pathname}${parsedUrl.search}`;
   } catch {
     return `methub-cache:${url}`;
   }
 }
 
-function leerCache(clave) {
+function readCache(key) {
   try {
-    const datosCrudos = window.localStorage.getItem(clave);
-    return datosCrudos ? JSON.parse(datosCrudos) : null;
+    const raw = window.localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : null;
   } catch {
     return null;
   }
 }
 
-function escribirCache(clave, valor) {
+function writeCache(key, value) {
   try {
-    window.localStorage.setItem(clave, JSON.stringify(valor));
+    window.localStorage.setItem(key, JSON.stringify(value));
   } catch {
     // ignorar errores de almacenamiento
   }
 }
 
-async function obtenerJson(url, opciones = {}) {
-  const urlParseada = new URL(url, window.location.origin);
-  const maxIntentos = opciones.maxIntentos || 3;
-  const retrasoReintentoMs = opciones.retrasoReintentoMs || 700;
-  const claveCache = obtenerClaveCache(urlParseada.toString());
-  const enCache = opciones.skipCache ? null : leerCache(claveCache);
+async function fetchJson(url, options = {}) {
+  const parsedUrl = new URL(url, window.location.origin);
+  const maxAttempts = options.maxAttempts || 3;
+  const retryDelayMs = options.retryDelayMs || 700;
+  const cacheKey = getCacheKey(parsedUrl.toString());
+  const cached = options.skipCache ? null : readCache(cacheKey);
 
   // 1. Verificar si hay datos en caché antes de hacer la petición
-  if (enCache) {
-    return enCache;
+  if (cached) {
+    return cached;
   }
 
-  let ultimoError = null;
+  let lastError = null;
 
   // 2. Intentar la petición a la API con reintentos
-  for (let intento = 1; intento <= maxIntentos; intento += 1) {
-    const controlador = new AbortController();
-    const idTimeout = window.setTimeout(() => controlador.abort(), opciones.timeoutMs || 10000);
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), options.timeoutMs || 10000);
 
     try {
       // Si el error de CORS persiste incluso cuando el 502 se solucione, 
@@ -52,34 +52,34 @@ async function obtenerJson(url, opciones = {}) {
       
       const response = await fetch(url, {
         cache: 'no-store',
-        ...opciones,
-        signal: controlador.signal,
+        ...options,
+        signal: controller.signal,
       });
 
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
 
-      const datos = await response.json();
-      escribirCache(claveCache, datos);
-      return datos;
+      const payload = await response.json();
+      writeCache(cacheKey, payload);
+      return payload;
       
     } catch (error) {
-      ultimoError = error;
-      if (intento < maxIntentos) {
-        await new Promise((resolve) => window.setTimeout(resolve, retrasoReintentoMs * intento));
+      lastError = error;
+      if (attempt < maxAttempts) {
+        await new Promise((resolve) => window.setTimeout(resolve, retryDelayMs * attempt));
       }
     } finally {
-      window.clearTimeout(idTimeout);
+      window.clearTimeout(timeoutId);
     }
   }
 
   // 3. Manejar el fallo definitivo
-  if (ultimoError?.name === 'AbortError') {
+  if (lastError?.name === 'AbortError') {
     throw new Error('La petición tardó demasiado');
   }
   
-  throw ultimoError || new Error('La petición falló');
+  throw lastError || new Error('La petición falló');
 }
 
-export { API_BASE, obtenerJson as fetchJson };
+export { API_BASE, fetchJson };
