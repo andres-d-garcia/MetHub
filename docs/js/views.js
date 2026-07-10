@@ -1,5 +1,5 @@
 import { API_BASE, fetchJson } from './api.js';
-import { createCard, createState, getImageFallbackSrc } from './components.js';
+import { createCard, createState, getImageFallbackSrc, openImagePreview } from './components.js';
 import { navigateTo } from './router.js';
 
 const PAGE_SIZE = 6;
@@ -397,10 +397,10 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
       const card = createCard({
         title: `${icon} ${department.displayName || 'Departamento'}`,
         meta: 'Explora obras de este departamento',
+        imageSrc: getDepartmentImageSrc(department.displayName, department.departmentId),
         actionLabel: 'Ver obras',
         onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
       });
-      card.querySelector('img')?.remove();
       departmentsGrid.appendChild(card);
     });
 
@@ -484,6 +484,107 @@ function getDepartmentIcon(name) {
   if (normalized.includes('med')) return '🏺';
   if (normalized.includes('near')) return '🏛️';
   return '🏛️';
+}
+
+function getDepartmentImageSrc(name = '', departmentId = null) {
+  const normalized = String(name || '').toLowerCase();
+  const normalizedId = Number(departmentId);
+
+  const departmentImageMap = {
+    11: './css/assets/European Paintings/729745ce246676a8457e0e40d29ee36722379ec8-5120x5120.avif',
+    13: './css/assets/Drawings and Prints/cb1c1fd13c449316c4ff9d7c99c228b764cbc2db-5120x2880.jpg',
+    14: './css/assets/american decorative arts/images.jpg',
+    15: './css/assets/american decorative arts/images.jpg',
+    16: './css/assets/Greek and Roman Art/images (1).jpg',
+    17: './css/assets/Egyptian Art/20ec8a34085f6c03ec8376a0b86b2674e3823828-5121x1707.avif',
+    18: './css/assets/Medieval Art/main-image.jpg',
+    19: './css/assets/The Cloisters/e2eeb0bffc667d37a03c5b6e04a040de7622ff10-5121x1707.avif',
+    21: './css/assets/Modern Art/fc460c2783c573bd0904b742d433178a4cc8856d-5120x2880.avif',
+    24: './css/assets/Islamic Art/cd2f4d77018702f9d923974a0bd1f758ce84592d-5120x5120.avif',
+    25: './css/assets/ancient west asian arts/c220f81f5a84f139b14b4c8267dc1b05ee8fc939-5121x1707.avif',
+    27: './css/assets/Musical Instruments/44e6858724385917530ffe1e51e0b2d4217b5055-1520x1026.avif',
+    28: './css/assets/The Robert Lehman Collection/1ec2c776aeb38b5fd3a19b55f09759cab3c87f4e-5120x5120.avif',
+    29: './css/assets/Costume/ac43bf14aa63d53b7d2f79bcf99c382f7d50e936-5121x1707.avif',
+    31: './css/assets/arms and armor/bdea4ddb362c2568731c7807adbb932446cb62b9-5121x1707.avif',
+    33: './css/assets/Arts of Africa, Oceania, and the Americas/0c338f9e4b12eceeb981b91e365b4ea200d7cf63-5121x1707.avif',
+    34: './css/assets/Asian Art/65b3ba148be04019138bc15ef96b38e8e6e1150c-5121x1707.avif',
+    35: './css/assets/The Libraries/361a8802af31a5440058975e88038549d80e81c6-1080x1080.jpg',
+    36: './css/assets/European Sculpture and Decorative Arts/images.jpg',
+  };
+
+  if (Number.isInteger(normalizedId) && departmentImageMap[normalizedId]) {
+    return departmentImageMap[normalizedId];
+  }
+
+  if (normalized.includes('paint')) {
+    return departmentImageMap[11];
+  }
+
+  if (normalized.includes('modern')) {
+    return departmentImageMap[21];
+  }
+
+  if (normalized.includes('asian')) {
+    return departmentImageMap[34];
+  }
+
+  if (normalized.includes('draw') || normalized.includes('print')) {
+    return departmentImageMap[13];
+  }
+
+  if (normalized.includes('islam')) {
+    return departmentImageMap[24];
+  }
+
+  if (normalized.includes('greek') || normalized.includes('roman')) {
+    return departmentImageMap[16];
+  }
+
+  if (normalized.includes('egypt')) {
+    return departmentImageMap[17];
+  }
+
+  if (normalized.includes('medieval')) {
+    return departmentImageMap[18];
+  }
+
+  if (normalized.includes('cloisters')) {
+    return departmentImageMap[19];
+  }
+
+  if (normalized.includes('costume')) {
+    return departmentImageMap[29];
+  }
+
+  if (normalized.includes('armor')) {
+    return departmentImageMap[31];
+  }
+
+  if (normalized.includes('africa') || normalized.includes('oceania') || normalized.includes('americas')) {
+    return departmentImageMap[33];
+  }
+
+  if (normalized.includes('musical')) {
+    return departmentImageMap[27];
+  }
+
+  if (normalized.includes('library')) {
+    return departmentImageMap[35];
+  }
+
+  if (normalized.includes('lehman')) {
+    return departmentImageMap[28];
+  }
+
+  if (normalized.includes('decorative') || normalized.includes('sculpture')) {
+    return departmentImageMap[36];
+  }
+
+  if (normalized.includes('west asian') || normalized.includes('ancient')) {
+    return departmentImageMap[25];
+  }
+
+  return './css/assets/f4785b84447903b0afc2b2032a5a968c19d04435-5120x2880.avif';
 }
 
 async function getDepartmentPreviewImage(departmentId) {
@@ -1107,6 +1208,11 @@ function renderDetailContent(app, item) {
   image.alt = item.title || 'Obra';
   image.loading = 'eager';
   image.decoding = 'async';
+  image.style.cursor = 'zoom-in';
+  image.addEventListener('click', (event) => {
+    event.stopPropagation();
+    openImagePreview(image.src, image.alt);
+  });
   image.addEventListener('error', () => {
     image.src = getImageFallbackSrc(item.title);
   });
@@ -1123,6 +1229,11 @@ function renderDetailContent(app, item) {
       thumb.alt = 'Imagen adicional';
       thumb.loading = 'lazy';
       thumb.decoding = 'async';
+      thumb.style.cursor = 'zoom-in';
+      thumb.addEventListener('click', (event) => {
+        event.stopPropagation();
+        openImagePreview(thumb.src, thumb.alt);
+      });
       thumb.addEventListener('error', () => {
         thumb.src = getImageFallbackSrc('Sin imagen');
       });
@@ -1237,10 +1348,10 @@ function renderDepartmentsView(app) {
         const card = createCard({
           title: `${icon} ${department.displayName || 'Departamento'}`,
           meta: 'Explora obras de este departamento',
+          imageSrc: getDepartmentImageSrc(department.displayName, department.departmentId),
           actionLabel: 'Ver obras',
           onAction: () => navigateTo(`#explore?departmentId=${department.departmentId || ''}`),
         });
-        card.querySelector('img')?.remove();
         grid.appendChild(card);
       });
 

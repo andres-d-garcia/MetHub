@@ -15,6 +15,41 @@ function getImageFallbackSrc(title = 'Sin imagen') {
   return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
 }
 
+function openImagePreview(src, alt = 'Imagen ampliada') {
+  const existing = document.querySelector('.image-preview-overlay');
+  if (existing) {
+    existing.remove();
+  }
+
+  const overlay = document.createElement('div');
+  overlay.className = 'image-preview-overlay';
+
+  const modal = document.createElement('div');
+  modal.className = 'image-preview-modal';
+
+  const closeButton = document.createElement('button');
+  closeButton.className = 'image-preview-close';
+  closeButton.textContent = '×';
+  closeButton.setAttribute('aria-label', 'Cerrar imagen ampliada');
+
+  const image = document.createElement('img');
+  image.src = src || getImageFallbackSrc(alt);
+  image.alt = alt || 'Imagen ampliada';
+  image.loading = 'eager';
+  image.decoding = 'async';
+
+  closeButton.addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', (event) => {
+    if (event.target === overlay) {
+      overlay.remove();
+    }
+  });
+
+  modal.append(closeButton, image);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
+}
+
 function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = 'Ver detalle' }) {
   const article = document.createElement('article');
   article.className = 'card';
@@ -25,6 +60,11 @@ function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = '
     img.alt = title || 'Obra';
     img.loading = 'lazy';
     img.decoding = 'async';
+    img.style.cursor = 'zoom-in';
+    img.addEventListener('click', (event) => {
+      event.stopPropagation();
+      openImagePreview(img.src, img.alt);
+    });
     img.addEventListener('error', () => {
       img.src = getImageFallbackSrc(title);
     });
@@ -82,4 +122,4 @@ function createState(message, options = {}) {
   return section;
 }
 
-export { createCard, createState, getImageFallbackSrc };
+export { createCard, createState, getImageFallbackSrc, openImagePreview };
