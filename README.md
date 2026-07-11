@@ -4,27 +4,6 @@ MetHub es una aplicación web de página única (SPA) construida con HTML, CSS y
 
 Este proyecto fue desarrollado como parte de un ejercicio académico, poniendo énfasis en el manejo de operaciones asíncronas, la creación de una interfaz fluida sin el uso de frameworks y el trabajo colaborativo.
 
-## Integrantes y División del Trabajo
-
-El proyecto fue desarrollado por dos integrantes, con una división de responsabilidades sugerida para equilibrar la carga de trabajo y fomentar la colaboración en áreas clave.
-
-*   **Estudiante A - Foco en Exploración y Detalle:**
-    *   Implementación de la vista **`#explore`**, incluyendo el panel de filtros avanzados (búsqueda, departamento, rango de años, checkboxes) y el panel de agregados en vivo.
-    *   Desarrollo de la vista de detalle de obra **`#detail/:id`**, mostrando la ficha técnica completa, imágenes y enlaces relacionados.
-    *   Lógica de paginación y carga de resultados en la vista de exploración.
-
-*   **Estudiante B - Foco en Comparación y Vistas Secundarias:**
-    *   Implementación de la vista **`#departments`** y **`#artist/:name`**.
-    *   Desarrollo de la compleja vista de **`#compare`**, incluyendo los buscadores internos por panel, la lógica de selección y la tabla comparativa con resaltado de diferencias.
-    *   Creación de los componentes base reutilizables (`createCard`, `createState`).
-
-*   **Responsabilidades Conjuntas:**
-    *   Diseño de la arquitectura inicial (router, estructura de archivos).
-    *   Implementación de la vista principal **`#home`**.
-    *   Creación de la barra de navegación y el footer.
-    *   Definición de los estilos globales y la paleta de colores para asegurar una identidad visual coherente.
-    *   Desarrollo y depuración de la capa de comunicación con la API (`api.js`).
-
 ## Instrucciones para Ejecutar el Proyecto
 
 La aplicación está diseñada para funcionar sin necesidad de un servidor web.
