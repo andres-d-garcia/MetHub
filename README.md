@@ -51,22 +51,23 @@ El proyecto se basa en funciones que actúan como "factorías" de componentes, g
 A continuación se muestran las seis vistas principales de la aplicación.
 
 **1. Página Principal (`#home`)**
-*[Inserta aquí una captura de la vista principal]*
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525544968976990359/image.png?ex=6a53c5f7&is=6a527477&hm=b1fd025572025dd910f49d851120aea5dd9b59b4a44fc40d019e1d153440de0b&)
+
 
 **2. Explorar (`#explore`)**
-**
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525545130084536350/image.png?ex=6a53c61e&is=6a52749e&hm=a537db05675bf7a607c2f8cf379c5417be7e6e5948d8658f1b9bbdf18090f84d&)
 
 **3. Detalle de Obra (`#detail/:id`)**
-**
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525545658302333029/image.png?ex=6a53c69c&is=6a52751c&hm=449819bf5085cb0f4285d22b2a46c666296421fa1819285001703447c9649151&)
 
 **4. Departamentos (`#departments`)**
-**
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525545377011339415/image.png?ex=6a53c659&is=6a5274d9&hm=45408534978b45244dbb05c3654c0902393833a155fd554f5c505e31b9a34be3&)
 
 **5. Obras del Artista (`#artist/:name`)**
-**
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525549908793491473/image.png?ex=6a53ca91&is=6a527911&hm=1c0862e91fb10d60a3cd9f5517131090b85964f6008c169fc2e2d97ac95d017e&)
 
 **6. Comparador (`#compare`)**
-**
+![alt text](https://cdn.discordapp.com/attachments/1466517733909729312/1525546001815961690/image.png?ex=6a53c6ee&is=6a52756e&hm=7d796b2713e3b68a27901580371b3c4e8646281373b69c77a927954183479947&)
 
 ## Decisiones Técnicas Relevantes
 
