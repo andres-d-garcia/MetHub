@@ -147,6 +147,98 @@ body::after {
   margin-bottom: 1.5rem;
 }
 
+.hero-carousel {
+  margin: 1rem 0 1.5rem;
+  padding: 1rem;
+  background: rgba(255, 249, 241, 0.94);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  box-shadow: var(--shadow);
+}
+
+.carousel-viewport {
+  position: relative;
+  overflow: hidden;
+  border-radius: 12px;
+  min-height: 280px;
+}
+
+.carousel-slide {
+  display: none;
+  position: relative;
+}
+
+.carousel-slide.active {
+  display: block;
+}
+
+.carousel-slide img {
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+  display: block;
+  border-radius: 12px;
+}
+
+.carousel-caption {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  background: rgba(43, 29, 18, 0.72);
+  color: white;
+  padding: 0.75rem 0.95rem;
+  border-radius: 10px;
+  max-width: min(80%, 320px);
+}
+
+.carousel-caption h3 {
+  margin: 0 0 0.2rem;
+  font-size: 1.1rem;
+}
+
+.carousel-caption p {
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.carousel-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.8rem;
+}
+
+.carousel-btn {
+  border: none;
+  background: var(--accent);
+  color: white;
+  width: 2.2rem;
+  height: 2.2rem;
+  border-radius: 999px;
+  cursor: pointer;
+  font-size: 1rem;
+}
+
+.carousel-dots {
+  display: flex;
+  gap: 0.45rem;
+}
+
+.carousel-dot {
+  border: none;
+  width: 0.7rem;
+  height: 0.7rem;
+  border-radius: 999px;
+  background: #d9c2a6;
+  cursor: pointer;
+  padding: 0;
+}
+
+.carousel-dot.active {
+  background: var(--accent);
+}
+
 .hero-actions {
   display: flex;
   flex-wrap: wrap;
@@ -171,6 +263,8 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
+  height: 100%;
+  min-height: 340px;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
 
@@ -185,6 +279,24 @@ body::after {
   object-fit: cover;
   border-radius: 10px;
   background: var(--accent-soft);
+  flex-shrink: 0;
+}
+
+.card-body {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.card h3,
+.card p {
+  margin: 0;
+  line-height: 1.25;
+}
+
+.card p {
+  color: var(--muted);
 }
 
 .image-preview-overlay {
@@ -241,6 +353,12 @@ body::after {
   padding: 0.6rem 0.9rem;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.card button {
+  margin-top: auto;
+  width: fit-content;
+  align-self: flex-start;
 }
 
 .card button:disabled,

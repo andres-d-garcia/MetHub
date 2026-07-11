@@ -300,6 +300,45 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
   hero.append(title, intro, note, actions);
   app.appendChild(hero);
 
+  const carouselSection = document.createElement('section');
+  carouselSection.className = 'hero-carousel';
+  carouselSection.innerHTML = `
+    <div class="carousel-viewport">
+      <div class="carousel-slide active">
+        <img src="./css/assets/European Paintings/729745ce246676a8457e0e40d29ee36722379ec8-5120x5120.avif" alt="Pintura clásica del Metropolitan Museum of Art" />
+        <div class="carousel-caption">
+          <h3>Grandes obras</h3>
+          <p>Descubre piezas icónicas de la colección del Met.</p>
+        </div>
+      </div>
+      <div class="carousel-slide">
+        <img src="./css/assets/Modern Art/fc460c2783c573bd0904b742d433178a4cc8856d-5120x2880.avif" alt="Arte moderno en el Metropolitan Museum" />
+        <div class="carousel-caption">
+          <h3>Arte moderno</h3>
+          <p>Una mirada rápida a las obras más contemporáneas.</p>
+        </div>
+      </div>
+      <div class="carousel-slide">
+        <img src="./css/assets/Egyptian Art/20ec8a34085f6c03ec8376a0b86b2674e3823828-5121x1707.avif" alt="Arte egipcio del museo" />
+        <div class="carousel-caption">
+          <h3>Historia viva</h3>
+          <p>Explora culturas y épocas a través de la colección.</p>
+        </div>
+      </div>
+    </div>
+    <div class="carousel-controls">
+      <button class="carousel-btn" type="button" aria-label="Ver imagen anterior">←</button>
+      <div class="carousel-dots" aria-label="Selección de imágenes">
+        <button class="carousel-dot active" type="button" aria-label="Ir a la imagen 1"></button>
+        <button class="carousel-dot" type="button" aria-label="Ir a la imagen 2"></button>
+        <button class="carousel-dot" type="button" aria-label="Ir a la imagen 3"></button>
+      </div>
+      <button class="carousel-btn" type="button" aria-label="Ver imagen siguiente">→</button>
+    </div>
+  `;
+  app.appendChild(carouselSection);
+  initSimpleCarousel(carouselSection);
+
   const statsSection = document.createElement('section');
   statsSection.className = 'stats-section';
 
@@ -466,6 +505,60 @@ function renderHomeContent(app, totalDepartments, totalHighlights, objectResults
 
   gallerySection.appendChild(grid);
   app.appendChild(gallerySection);
+}
+
+function initSimpleCarousel(container) {
+  if (!container || container.dataset.carouselInitialized === 'true') {
+    return;
+  }
+
+  const slides = Array.from(container.querySelectorAll('.carousel-slide'));
+  const dots = Array.from(container.querySelectorAll('.carousel-dot'));
+  const buttons = Array.from(container.querySelectorAll('.carousel-btn'));
+
+  if (!slides.length) {
+    return;
+  }
+
+  let currentIndex = 0;
+  let intervalId = null;
+
+  const showSlide = (nextIndex) => {
+    currentIndex = (nextIndex + slides.length) % slides.length;
+    slides.forEach((slide, index) => {
+      slide.classList.toggle('active', index === currentIndex);
+    });
+    dots.forEach((dot, index) => {
+      dot.classList.toggle('active', index === currentIndex);
+    });
+  };
+
+  const startAutoRotate = () => {
+    if (intervalId) {
+      window.clearInterval(intervalId);
+    }
+    intervalId = window.setInterval(() => {
+      showSlide(currentIndex + 1);
+    }, 5000);
+  };
+
+  buttons[0]?.addEventListener('click', () => showSlide(currentIndex - 1));
+  buttons[1]?.addEventListener('click', () => showSlide(currentIndex + 1));
+  dots.forEach((dot, index) => {
+    dot.addEventListener('click', () => showSlide(index));
+  });
+
+  container.addEventListener('mouseenter', () => {
+    if (intervalId) {
+      window.clearInterval(intervalId);
+      intervalId = null;
+    }
+  });
+  container.addEventListener('mouseleave', startAutoRotate);
+
+  showSlide(0);
+  startAutoRotate();
+  container.dataset.carouselInitialized = 'true';
 }
 
 function getDepartmentIcon(name) {
@@ -1474,6 +1567,11 @@ function renderCompareView(app, params = new URLSearchParams()) {
 
   const compareLayout = document.createElement('div');
   compareLayout.className = 'compare-layout';
+  // Se añaden estilos para un layout de rejilla que permite que las tarjetas crezcan a la misma altura.
+  compareLayout.style.display = 'grid';
+  compareLayout.style.gridTemplateColumns = 'repeat(auto-fit, minmax(300px, 1fr))';
+  compareLayout.style.gap = 'var(--spacing-lg, 1.5rem)';
+  compareLayout.style.alignItems = 'stretch';
 
   const state = {
     selectedA: null,
@@ -1505,9 +1603,10 @@ function renderCompareView(app, params = new URLSearchParams()) {
             subtitle: item.artistDisplayName || 'Artista desconocido',
             meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
             imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-            actionLabel: 'Seleccionada',
+            actionLabel: '',
             onAction: () => {},
           });
+          card.style.height = '100%';
           sel.appendChild(card);
           state.selectedA = item;
         }
@@ -1528,9 +1627,10 @@ function renderCompareView(app, params = new URLSearchParams()) {
               subtitle: item.artistDisplayName || 'Artista desconocido',
               meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
               imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-              actionLabel: 'Seleccionada',
+              actionLabel: '',
               onAction: () => {},
             });
+            card.style.height = '100%';
             sel.appendChild(card);
             state.selectedA = item;
           }
@@ -1549,9 +1649,10 @@ function renderCompareView(app, params = new URLSearchParams()) {
               subtitle: item.artistDisplayName || 'Artista desconocido',
               meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
               imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-              actionLabel: 'Seleccionada',
+              actionLabel: '',
               onAction: () => {},
             });
+            card.style.height = '100%';
             sel.appendChild(card);
             state.selectedB = item;
           }
@@ -1619,12 +1720,6 @@ function renderCompareView(app, params = new URLSearchParams()) {
         tdLabel.className = 'diff-label';
         tdLeft.className = 'diff-cell';
         tdRight.className = 'diff-cell';
-
-        const badge = document.createElement('span');
-        badge.className = 'diff-badge';
-        badge.textContent = 'Diferente';
-        tdLeft.appendChild(badge);
-        tdRight.appendChild(badge.cloneNode(true));
       }
 
       tr.append(tdLabel, tdLeft, tdRight);
@@ -1688,6 +1783,9 @@ function renderCompareView(app, params = new URLSearchParams()) {
 function createComparePanel(title, state, panelKey) {
   const panel = document.createElement('div');
   panel.className = 'compare-panel';
+  // Se convierte el panel en un contenedor flex para que sus hijos puedan crecer.
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
 
   const heading = document.createElement('h3');
   heading.textContent = title;
@@ -1704,6 +1802,8 @@ function createComparePanel(title, state, panelKey) {
 
   const selected = document.createElement('div');
   selected.className = 'compare-selected';
+  // Se permite que el contenedor de la tarjeta seleccionada crezca para llenar el espacio.
+  selected.style.flexGrow = '1';
   panel.appendChild(selected);
 
   const changeButton = document.createElement('button');
@@ -1771,9 +1871,10 @@ function createComparePanel(title, state, panelKey) {
                     subtitle: item.artistDisplayName || 'Artista desconocido',
                     meta: `${item.objectDate || '—'} · ${item.department || '—'}`,
                     imageSrc: item.primaryImageSmall || getImageFallbackSrc(item.title),
-                    actionLabel: 'Seleccionada',
+                    actionLabel: '',
                     onAction: () => {},
                   });
+                  card.style.height = '100%';
                   selected.appendChild(card);
                   results.innerHTML = '';
                   panel.setSelectionState(true);

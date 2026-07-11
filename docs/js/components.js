@@ -54,6 +54,19 @@ function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = '
   const article = document.createElement('article');
   article.className = 'card';
 
+  if (onAction) {
+    article.classList.add('actionable');
+    article.addEventListener('click', onAction);
+    article.setAttribute('role', 'button');
+    article.setAttribute('tabindex', '0');
+    article.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault();
+        onAction();
+      }
+    });
+  }
+
   if (imageSrc || true) {
     const img = document.createElement('img');
     img.src = imageSrc || getImageFallbackSrc(title);
@@ -71,28 +84,26 @@ function createCard({ title, subtitle, meta, imageSrc, onAction, actionLabel = '
     article.appendChild(img);
   }
 
+  const body = document.createElement('div');
+  body.className = 'card-body';
+
   const titleEl = document.createElement('h3');
   titleEl.textContent = title || 'Sin título';
-  article.appendChild(titleEl);
+  body.appendChild(titleEl);
 
   if (subtitle) {
     const subtitleEl = document.createElement('p');
     subtitleEl.textContent = subtitle;
-    article.appendChild(subtitleEl);
+    body.appendChild(subtitleEl);
   }
 
   if (meta) {
     const metaEl = document.createElement('p');
     metaEl.textContent = meta;
-    article.appendChild(metaEl);
+    body.appendChild(metaEl);
   }
 
-  if (onAction) {
-    const button = document.createElement('button');
-    button.textContent = actionLabel;
-    button.addEventListener('click', onAction);
-    article.appendChild(button);
-  }
+  article.appendChild(body);
 
   return article;
 }
